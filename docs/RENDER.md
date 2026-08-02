@@ -131,23 +131,40 @@ Enter your phone number, the code Telegram texts you, and your 2FA
 password if set. This writes the session file so the main process can
 reconnect without further interaction.
 
-**Register the channel** as a source (do this once, from any machine):
+**Register source channels** - the channels the listener should watch for
+new anime (separate from `STORAGE_CHANNEL_ID`, your private channel above,
+which is just where matched posts get filed away). Two ways:
 
-```bash
-curl -X POST https://popular-anime-bot.onrender.com/api/v1/source-channels \
-  -H "X-Internal-Key: <INTERNAL_API_KEY>" \
-  -H "Content-Type: application/json" \
-  -d '{
-        "telegram_channel_id": -100xxxxxxxxxx,
-        "title": "My anime channel",
-        "source_language": "fa"
-      }'
-```
+- **Already-existing public channels** (e.g. Farsi-dub anime channels you
+  follow): edit the `CHANNELS` list at the top of `register_channels.py`
+  with their `@usernames`, then in the Render Shell run:
 
-Use `"source_language": "fa"` (or `"tg"`) if you're posting content
-already in Persian/Tajik yourself - that skips the RU/EN→FA machine
-translation step entirely, which is both faster and more accurate for
-content you wrote yourself.
+  ```bash
+  python register_channels.py
+  ```
+
+  It resolves each username to its numeric id, joins it with your
+  account (needed so Telegram actually pushes new-message events to the
+  listener), and registers it - skipping any already registered, so it's
+  safe to re-run after adding more usernames later.
+
+- **Manual registration** (e.g. for the single-channel self-curated setup
+  from `docs/DEPLOYMENT.md`, where the source *is* your storage channel):
+
+  ```bash
+  curl -X POST https://popular-anime-bot.onrender.com/api/v1/source-channels \
+    -H "X-Internal-Key: <INTERNAL_API_KEY>" \
+    -H "Content-Type: application/json" \
+    -d '{
+          "telegram_channel_id": -100xxxxxxxxxx,
+          "title": "My anime channel",
+          "source_language": "fa"
+        }'
+  ```
+
+Use `"source_language": "fa"` (or `"tg"`) for channels already in
+Persian/Tajik - that skips the RU/EN→FA machine translation step
+entirely, which is both faster and more accurate.
 
 ⚠️ **Disk persistence warning**: Render's free tier has no persistent
 disk. The session file written by `login.py` can be wiped on the next

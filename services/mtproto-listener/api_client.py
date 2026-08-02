@@ -34,6 +34,20 @@ class ApiClient:
         )
         return result or []
 
+    async def create_source_channel(
+        self, telegram_channel_id: int, username: Optional[str], title: str, source_language: str
+    ) -> dict:
+        return await self._request(
+            "POST",
+            "/api/v1/source-channels",
+            json={
+                "telegram_channel_id": telegram_channel_id,
+                "username": username or "",
+                "title": title,
+                "source_language": source_language,
+            },
+        )
+
     async def update_source_channel_cursor(self, channel_id: int, last_message_id: int):
         await self._request(
             "POST",
