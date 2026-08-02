@@ -160,11 +160,37 @@ async def fetch_linked_episodes(client: TelegramClient, api: ApiClient, channel:
 
     for link in links:
         try:
+            # If the channel already labels this exact episode's link as
+            # subtitle-only (e.g. "Eposide_1 - زیرنویس فارسی"), skip it
+            # without ever pressing start - no point fetching what we'd
+            # discard anyway.
+            if is_subtitle_only(link.get("label", "")):
+                await api.create_import_log(
+                    channel["id"], message.id, "skipped",
+                    detail=f"linked episode {link['episode_number']} labeled subtitle-only, not fetched",
+                )
+                continue
+
             file_message = await fetch_episode_file(client, link["bot_username"], link["start_param"])
             if not file_message:
                 await api.create_import_log(
                     channel["id"], message.id, "skipped",
                     detail=f"linked episode {link['episode_number']} via @{link['bot_username']} did not arrive",
+                )
+                continue
+
+            # The delivery bot's own caption on the file it sends is often
+            # the only place that reveals dub vs. subtitle - the original
+            # channel post may not have said either way.
+            delivered_text = file_message.message or ""
+            if is_subtitle_only(delivered_text):
+                logger.info(
+                    "discarding linked episode %s via @%s - delivered file is subtitle-only, not dubbed",
+                    link["episode_number"], link["bot_username"],
+                )
+                await api.create_import_log(
+                    channel["id"], message.id, "skipped",
+                    detail=f"linked episode {link['episode_number']} via @{link['bot_username']} was subtitle-only, discarded",
                 )
                 continue
 

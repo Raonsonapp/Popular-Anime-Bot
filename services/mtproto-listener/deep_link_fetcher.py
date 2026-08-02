@@ -50,13 +50,32 @@ def _parse_deep_link(url: str):
     return bot_username, start_param
 
 
+def _line_at(text: str, offset: int) -> str:
+    """The full line of text an entity sits in - e.g. "Eposide_1 - دوبله
+    فارسی" - not just the hyperlinked substring itself ("Eposide_1"),
+    since a dub/subtitle marker next to the link is usually outside the
+    link's own span but still describes it."""
+    if not text:
+        return ""
+    line_start = text.rfind("\n", 0, offset) + 1
+    line_end = text.find("\n", offset)
+    if line_end == -1:
+        line_end = len(text)
+    return text[line_start:line_end]
+
+
 def extract_episode_deep_links(message) -> list[dict]:
-    """Returns [{"episode_number": int|None, "bot_username": str, "start_param": str}, ...]
-    for every deep link the post points at a delivery bot with - whether
-    it's hidden behind hyperlinked caption text or an inline button
-    attached under the post (both are common, depending on the channel)."""
+    """Returns [{"episode_number": int|None, "bot_username": str,
+    "start_param": str, "label": str}, ...] for every deep link the post
+    points at a delivery bot with - whether it's hidden behind hyperlinked
+    caption text or an inline button attached under the post (both are
+    common, depending on the channel). "label" is the surrounding text
+    (the line, for hyperlinks; the button's own text, for buttons) - used
+    to catch a per-episode "زیرنویس فارسی" (subtitle, not dub) marker
+    before ever fetching that episode."""
     links = []
     seen = set()
+    full_text = message.message or ""
 
     for entity, entity_text in message.get_entities_text():
         if isinstance(entity, MessageEntityTextUrl):
@@ -78,6 +97,7 @@ def extract_episode_deep_links(message) -> list[dict]:
                 "episode_number": int(ep_match.group(1)) if ep_match else None,
                 "bot_username": bot_username,
                 "start_param": start_param,
+                "label": _line_at(full_text, entity.offset),
             }
         )
 
@@ -98,6 +118,7 @@ def extract_episode_deep_links(message) -> list[dict]:
                     "episode_number": int(ep_match.group(1)) if ep_match else None,
                     "bot_username": bot_username,
                     "start_param": start_param,
+                    "label": button.text or "",
                 }
             )
 
