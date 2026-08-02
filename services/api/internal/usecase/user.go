@@ -26,13 +26,17 @@ func (s *UserService) Touch(ctx context.Context, telegramUserID int64, username,
 		u.FirstName = &firstName
 	}
 	if u.LanguagePref == "" {
-		u.LanguagePref = "fa"
+		u.LanguagePref = "tg"
 	}
 	out, err := s.User.Upsert(ctx, u)
 	if err != nil {
 		return nil, fmt.Errorf("touch user: %w", err)
 	}
 	return out, nil
+}
+
+func (s *UserService) SetLanguage(ctx context.Context, telegramUserID int64, lang string) error {
+	return s.User.SetLanguage(ctx, telegramUserID, lang)
 }
 
 func (s *UserService) ToggleFavorite(ctx context.Context, userID, animeID int64) (bool, error) {

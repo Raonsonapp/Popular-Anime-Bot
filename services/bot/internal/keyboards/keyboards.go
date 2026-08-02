@@ -6,40 +6,53 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"popular-anime-bot/bot/internal/apiclient"
+	"popular-anime-bot/bot/internal/i18n"
 )
 
-func MainMenu() tgbotapi.InlineKeyboardMarkup {
+func MainMenu(lang i18n.Lang) tgbotapi.InlineKeyboardMarkup {
+	t := func(key string) string { return i18n.T(lang, key) }
 	return tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔍 جستجو", "m:search"),
-			tgbotapi.NewInlineKeyboardButtonData("🎭 ژانرها", "g:list"),
+			tgbotapi.NewInlineKeyboardButtonData(t("menu_search"), "m:search"),
+			tgbotapi.NewInlineKeyboardButtonData(t("menu_genres"), "g:list"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("⭐ برترین‌ها", "s:top_rated:1"),
-			tgbotapi.NewInlineKeyboardButtonData("🔥 پرطرفدار", "s:trending:1"),
+			tgbotapi.NewInlineKeyboardButtonData(t("menu_top_rated"), "s:top_rated:1"),
+			tgbotapi.NewInlineKeyboardButtonData(t("menu_trending"), "s:trending:1"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🆕 جدیدترین", "s:newest:1"),
-			tgbotapi.NewInlineKeyboardButtonData("🎲 تصادفی", "m:random"),
+			tgbotapi.NewInlineKeyboardButtonData(t("menu_newest"), "s:newest:1"),
+			tgbotapi.NewInlineKeyboardButtonData(t("menu_random"), "m:random"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("▶️ ادامه تماشا", "m:continue"),
-			tgbotapi.NewInlineKeyboardButtonData("❤️ علاقه‌مندی‌ها", "m:favorites:1"),
+			tgbotapi.NewInlineKeyboardButtonData(t("menu_continue"), "m:continue"),
+			tgbotapi.NewInlineKeyboardButtonData(t("menu_favorites"), "m:favorites:1"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🕒 تاریخچه", "m:history:1"),
+			tgbotapi.NewInlineKeyboardButtonData(t("menu_history"), "m:history:1"),
+			tgbotapi.NewInlineKeyboardButtonData(t("menu_language"), "m:lang"),
 		),
 	)
 }
 
-func BackToMainRow() tgbotapi.InlineKeyboardButton {
-	return tgbotapi.NewInlineKeyboardButtonData("🔙 بازگشت به منو", "m:main")
+func BackToMainRow(lang i18n.Lang) tgbotapi.InlineKeyboardButton {
+	return tgbotapi.NewInlineKeyboardButtonData(i18n.T(lang, "back_to_menu"), "m:main")
 }
 
-func AnimeListKeyboard(items []apiclient.Anime, page, total, pageSize int, pagePrefix string) tgbotapi.InlineKeyboardMarkup {
+func LanguageKeyboard() tgbotapi.InlineKeyboardMarkup {
+	var rows [][]tgbotapi.InlineKeyboardButton
+	for _, l := range i18n.All {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(l.DisplayName(), fmt.Sprintf("lang:%s", l)),
+		))
+	}
+	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+}
+
+func AnimeListKeyboard(lang i18n.Lang, items []apiclient.Anime, page, total, pageSize int, pagePrefix string) tgbotapi.InlineKeyboardMarkup {
 	var rows [][]tgbotapi.InlineKeyboardButton
 	for _, a := range items {
-		label := fmt.Sprintf("%s (%d قسمت)", a.Title, a.EpisodesCount)
+		label := fmt.Sprintf("%s %s", a.Title, i18n.Tf(lang, "caption_episodes_suffix", a.EpisodesCount))
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("a:%d", a.ID)),
 		))
@@ -47,43 +60,43 @@ func AnimeListKeyboard(items []apiclient.Anime, page, total, pageSize int, pageP
 
 	var nav []tgbotapi.InlineKeyboardButton
 	if page > 1 {
-		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData("⬅️ قبلی", fmt.Sprintf("%s:%d", pagePrefix, page-1)))
+		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData(i18n.T(lang, "prev"), fmt.Sprintf("%s:%d", pagePrefix, page-1)))
 	}
 	if page*pageSize < total {
-		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData("➡️ بعدی", fmt.Sprintf("%s:%d", pagePrefix, page+1)))
+		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData(i18n.T(lang, "next"), fmt.Sprintf("%s:%d", pagePrefix, page+1)))
 	}
 	if len(nav) > 0 {
 		rows = append(rows, nav)
 	}
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(BackToMainRow()))
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(BackToMainRow(lang)))
 
 	return tgbotapi.NewInlineKeyboardMarkup(rows...)
 }
 
-func AnimeDetailKeyboard(a apiclient.Anime, isFavorite bool, botUsername string) tgbotapi.InlineKeyboardMarkup {
-	favLabel := "⭐ افزودن به علاقه‌مندی"
+func AnimeDetailKeyboard(lang i18n.Lang, a apiclient.Anime, isFavorite bool, botUsername string) tgbotapi.InlineKeyboardMarkup {
+	favLabel := i18n.T(lang, "add_favorite")
 	if isFavorite {
-		favLabel = "💔 حذف از علاقه‌مندی"
+		favLabel = i18n.T(lang, "remove_favorite")
 	}
 	shareURL := fmt.Sprintf("https://t.me/%s?start=anime_%d", botUsername, a.ID)
 
 	return tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("▶️ تماشا", fmt.Sprintf("e:%d:1", a.ID)),
+			tgbotapi.NewInlineKeyboardButtonData(i18n.T(lang, "watch"), fmt.Sprintf("e:%d:1", a.ID)),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(favLabel, fmt.Sprintf("a:%d:fav", a.ID)),
-			tgbotapi.NewInlineKeyboardButtonURL("📢 اشتراک‌گذاری", shareURL),
+			tgbotapi.NewInlineKeyboardButtonURL(i18n.T(lang, "share"), shareURL),
 		),
-		tgbotapi.NewInlineKeyboardRow(BackToMainRow()),
+		tgbotapi.NewInlineKeyboardRow(BackToMainRow(lang)),
 	)
 }
 
-func EpisodesKeyboard(animeID int64, episodes []apiclient.Episode, page, total, pageSize int) tgbotapi.InlineKeyboardMarkup {
+func EpisodesKeyboard(lang i18n.Lang, animeID int64, episodes []apiclient.Episode, page, total, pageSize int) tgbotapi.InlineKeyboardMarkup {
 	var rows [][]tgbotapi.InlineKeyboardButton
 	var row []tgbotapi.InlineKeyboardButton
 	for i, e := range episodes {
-		label := fmt.Sprintf("قسمت %d [%s]", e.EpisodeNumber, e.Quality)
+		label := i18n.Tf(lang, "episode_button", e.EpisodeNumber, e.Quality)
 		row = append(row, tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("w:%d", e.ID)))
 		if (i+1)%2 == 0 {
 			rows = append(rows, row)
@@ -96,22 +109,22 @@ func EpisodesKeyboard(animeID int64, episodes []apiclient.Episode, page, total, 
 
 	var nav []tgbotapi.InlineKeyboardButton
 	if page > 1 {
-		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData("⬅️ قبلی", fmt.Sprintf("e:%d:%d", animeID, page-1)))
+		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData(i18n.T(lang, "prev"), fmt.Sprintf("e:%d:%d", animeID, page-1)))
 	}
 	if page*pageSize < total {
-		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData("➡️ بعدی", fmt.Sprintf("e:%d:%d", animeID, page+1)))
+		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData(i18n.T(lang, "next"), fmt.Sprintf("e:%d:%d", animeID, page+1)))
 	}
 	if len(nav) > 0 {
 		rows = append(rows, nav)
 	}
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("🔙 بازگشت به آنیمه", fmt.Sprintf("a:%d", animeID)),
+		tgbotapi.NewInlineKeyboardButtonData(i18n.T(lang, "back_to_anime"), fmt.Sprintf("a:%d", animeID)),
 	))
 
 	return tgbotapi.NewInlineKeyboardMarkup(rows...)
 }
 
-func GenresKeyboard(genres []apiclient.Genre) tgbotapi.InlineKeyboardMarkup {
+func GenresKeyboard(lang i18n.Lang, genres []apiclient.Genre) tgbotapi.InlineKeyboardMarkup {
 	var rows [][]tgbotapi.InlineKeyboardButton
 	var row []tgbotapi.InlineKeyboardButton
 	for i, g := range genres {
@@ -124,6 +137,6 @@ func GenresKeyboard(genres []apiclient.Genre) tgbotapi.InlineKeyboardMarkup {
 	if len(row) > 0 {
 		rows = append(rows, row)
 	}
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(BackToMainRow()))
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(BackToMainRow(lang)))
 	return tgbotapi.NewInlineKeyboardMarkup(rows...)
 }

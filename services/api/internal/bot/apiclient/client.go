@@ -135,6 +135,11 @@ func (c *Client) TouchUser(ctx context.Context, telegramUserID int64, username, 
 	return &out, nil
 }
 
+func (c *Client) SetLanguage(ctx context.Context, telegramUserID int64, lang string) error {
+	body := map[string]interface{}{"telegram_user_id": telegramUserID, "language": lang}
+	return c.do(ctx, http.MethodPost, "/api/v1/users/language", nil, body, nil)
+}
+
 func (c *Client) ToggleFavorite(ctx context.Context, userID, animeID int64) (bool, error) {
 	body := map[string]interface{}{"user_id": userID, "anime_id": animeID}
 	var out struct {

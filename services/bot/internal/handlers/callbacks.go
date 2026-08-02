@@ -9,6 +9,7 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
+	"popular-anime-bot/bot/internal/i18n"
 	"popular-anime-bot/bot/internal/keyboards"
 )
 
@@ -29,6 +30,11 @@ func (b *Bot) handleCallback(ctx context.Context, cq *tgbotapi.CallbackQuery) {
 	chatID := cq.Message.Chat.ID
 	telegramUserID := cq.From.ID
 
+	_, lang, err := b.ensureUser(ctx, cq.From)
+	if err != nil {
+		b.Logger.Error("ensure user", "error", err)
+	}
+
 	parts := strings.Split(cq.Data, ":")
 	if len(parts) == 0 {
 		return
@@ -36,16 +42,16 @@ func (b *Bot) handleCallback(ctx context.Context, cq *tgbotapi.CallbackQuery) {
 
 	switch parts[0] {
 	case "m":
-		b.handleMenuCallback(ctx, chatID, telegramUserID, parts)
+		b.handleMenuCallback(ctx, chatID, telegramUserID, lang, parts)
 	case "g":
 		if len(parts) >= 2 && parts[1] == "list" {
 			genres, err := b.Client.ListGenres(ctx)
 			if err != nil {
-				b.reply(chatID, "❌ خطا در دریافت ژانرها.", nil)
+				b.reply(chatID, i18n.T(lang, "genres_error"), nil)
 				return
 			}
-			kb := keyboards.GenresKeyboard(genres)
-			b.reply(chatID, "🎭 یک ژانر را انتخاب کنید:", &kb)
+			kb := keyboards.GenresKeyboard(lang, genres)
+			b.reply(chatID, i18n.T(lang, "genres_prompt"), &kb)
 		}
 	case "gg":
 		if len(parts) < 3 {
@@ -53,28 +59,33 @@ func (b *Bot) handleCallback(ctx context.Context, cq *tgbotapi.CallbackQuery) {
 		}
 		genreID, _ := strconv.ParseInt(parts[1], 10, 64)
 		page, _ := strconv.Atoi(parts[2])
-		b.listByGenre(ctx, chatID, genreID, page)
+		b.listByGenre(ctx, chatID, lang, genreID, page)
 	case "s":
 		if len(parts) < 3 {
 			return
 		}
 		sort := parts[1]
 		page, _ := strconv.Atoi(parts[2])
-		b.listSorted(ctx, chatID, sort, page)
+		b.listSorted(ctx, chatID, lang, sort, page)
 	case "sq":
 		if len(parts) < 3 {
 			return
 		}
 		token, _ := strconv.ParseInt(parts[1], 10, 64)
 		page, _ := strconv.Atoi(parts[2])
-		b.repeatSearch(ctx, chatID, token, page)
+		b.repeatSearch(ctx, chatID, lang, token, page)
+	case "lang":
+		if len(parts) < 2 {
+			return
+		}
+		b.changeLanguage(ctx, answer, telegramUserID, parts[1])
 	case "a":
 		if len(parts) < 2 {
 			return
 		}
 		animeID, _ := strconv.ParseInt(parts[1], 10, 64)
 		if len(parts) >= 3 && parts[2] == "fav" {
-			b.toggleFavoriteCallback(ctx, cq, answer, chatID, telegramUserID, animeID)
+			b.toggleFavoriteCallback(ctx, cq, answer, lang, chatID, telegramUserID, animeID)
 			return
 		}
 		b.sendAnimeDetail(ctx, chatID, telegramUserID, animeID)
@@ -84,7 +95,7 @@ func (b *Bot) handleCallback(ctx context.Context, cq *tgbotapi.CallbackQuery) {
 		}
 		animeID, _ := strconv.ParseInt(parts[1], 10, 64)
 		page, _ := strconv.Atoi(parts[2])
-		b.sendEpisodesList(ctx, chatID, animeID, page)
+		b.sendEpisodesList(ctx, chatID, lang, animeID, page)
 	case "w":
 		if len(parts) < 2 {
 			return
@@ -94,20 +105,23 @@ func (b *Bot) handleCallback(ctx context.Context, cq *tgbotapi.CallbackQuery) {
 	}
 }
 
-func (b *Bot) handleMenuCallback(ctx context.Context, chatID, telegramUserID int64, parts []string) {
+func (b *Bot) handleMenuCallback(ctx context.Context, chatID, telegramUserID int64, lang i18n.Lang, parts []string) {
 	if len(parts) < 2 {
 		return
 	}
 	switch parts[1] {
 	case "main":
-		kb := keyboards.MainMenu()
-		b.reply(chatID, welcomeText, &kb)
+		kb := keyboards.MainMenu(lang)
+		b.reply(chatID, i18n.T(lang, "welcome"), &kb)
 	case "search":
-		b.reply(chatID, "🔍 نام آنیمه مورد نظر خود را تایپ کنید:", nil)
+		b.reply(chatID, i18n.T(lang, "search_prompt"), nil)
+	case "lang":
+		kb := keyboards.LanguageKeyboard()
+		b.reply(chatID, i18n.T(lang, "choose_language"), &kb)
 	case "random":
 		a, err := b.Client.RandomAnime(ctx)
 		if err != nil || a == nil {
-			b.reply(chatID, "❌ آنیمه‌ای یافت نشد.", nil)
+			b.reply(chatID, i18n.T(lang, "random_not_found"), nil)
 			return
 		}
 		b.sendAnimeDetail(ctx, chatID, telegramUserID, a.ID)
@@ -116,33 +130,43 @@ func (b *Bot) handleMenuCallback(ctx context.Context, chatID, telegramUserID int
 		if len(parts) >= 3 {
 			page, _ = strconv.Atoi(parts[2])
 		}
-		b.listFavorites(ctx, chatID, telegramUserID, page)
+		b.listFavorites(ctx, chatID, lang, telegramUserID, page)
 	case "history":
 		page := 1
 		if len(parts) >= 3 {
 			page, _ = strconv.Atoi(parts[2])
 		}
-		b.listHistory(ctx, chatID, telegramUserID, page)
+		b.listHistory(ctx, chatID, lang, telegramUserID, page)
 	case "continue":
-		b.listContinueWatching(ctx, chatID, telegramUserID)
+		b.listContinueWatching(ctx, chatID, lang, telegramUserID)
 	}
 }
 
-func (b *Bot) toggleFavoriteCallback(ctx context.Context, cq *tgbotapi.CallbackQuery, answer func(string), chatID, telegramUserID, animeID int64) {
-	userID, err := b.ensureUser(ctx, &tgbotapi.User{ID: telegramUserID})
+func (b *Bot) changeLanguage(ctx context.Context, answer func(string), telegramUserID int64, code string) {
+	newLang := i18n.Normalize(code)
+	if err := b.Client.SetLanguage(ctx, telegramUserID, string(newLang)); err != nil {
+		answer(i18n.T(newLang, "generic_error"))
+		return
+	}
+	b.setUserLang(telegramUserID, newLang)
+	answer(i18n.T(newLang, "language_changed"))
+}
+
+func (b *Bot) toggleFavoriteCallback(ctx context.Context, cq *tgbotapi.CallbackQuery, answer func(string), lang i18n.Lang, chatID, telegramUserID, animeID int64) {
+	userID, _, err := b.ensureUser(ctx, &tgbotapi.User{ID: telegramUserID})
 	if err != nil || userID == 0 {
-		answer("❌ خطا در ثبت علاقه‌مندی.")
+		answer(i18n.T(lang, "favorite_error"))
 		return
 	}
 	added, err := b.Client.ToggleFavorite(ctx, userID, animeID)
 	if err != nil {
-		answer("❌ خطا در ثبت علاقه‌مندی.")
+		answer(i18n.T(lang, "favorite_error"))
 		return
 	}
 
-	toast := "💔 از علاقه‌مندی‌ها حذف شد."
+	toast := i18n.T(lang, "favorite_removed")
 	if added {
-		toast = "⭐ به علاقه‌مندی‌ها اضافه شد."
+		toast = i18n.T(lang, "favorite_added")
 	}
 
 	// Editing/replacing the message only makes sense in a 1-on-1 bot chat;
@@ -155,39 +179,39 @@ func (b *Bot) toggleFavoriteCallback(ctx context.Context, cq *tgbotapi.CallbackQ
 	b.sendAnimeDetail(ctx, chatID, telegramUserID, animeID)
 }
 
-func (b *Bot) listSorted(ctx context.Context, chatID int64, sort string, page int) {
+func (b *Bot) listSorted(ctx context.Context, chatID int64, lang i18n.Lang, sort string, page int) {
 	q := url.Values{}
 	q.Set("sort", sort)
 	q.Set("page", fmt.Sprint(page))
 	resp, err := b.Client.ListAnime(ctx, q)
 	if err != nil {
-		b.reply(chatID, "❌ خطا در دریافت لیست.", nil)
+		b.reply(chatID, i18n.T(lang, "list_error"), nil)
 		return
 	}
-	titles := map[string]string{
-		"top_rated": "⭐ برترین آنیمه‌ها",
-		"trending":  "🔥 پرطرفدارترین‌ها",
-		"newest":    "🆕 جدیدترین‌ها",
+	titleKeys := map[string]string{
+		"top_rated": "top_rated_title",
+		"trending":  "trending_title",
+		"newest":    "newest_title",
 	}
-	b.sendAnimeSearchResults(chatID, resp.Items, resp.Total, page, "s:"+sort, titles[sort])
+	b.sendAnimeSearchResults(chatID, lang, resp.Items, resp.Total, page, "s:"+sort, i18n.T(lang, titleKeys[sort]))
 }
 
-func (b *Bot) listByGenre(ctx context.Context, chatID int64, genreID int64, page int) {
+func (b *Bot) listByGenre(ctx context.Context, chatID int64, lang i18n.Lang, genreID int64, page int) {
 	q := url.Values{}
 	q.Set("genre_id", fmt.Sprint(genreID))
 	q.Set("page", fmt.Sprint(page))
 	resp, err := b.Client.ListAnime(ctx, q)
 	if err != nil {
-		b.reply(chatID, "❌ خطا در دریافت لیست.", nil)
+		b.reply(chatID, i18n.T(lang, "list_error"), nil)
 		return
 	}
-	b.sendAnimeSearchResults(chatID, resp.Items, resp.Total, page, fmt.Sprintf("gg:%d", genreID), "🎭 آنیمه‌های این ژانر:")
+	b.sendAnimeSearchResults(chatID, lang, resp.Items, resp.Total, page, fmt.Sprintf("gg:%d", genreID), i18n.T(lang, "genre_results_title"))
 }
 
-func (b *Bot) repeatSearch(ctx context.Context, chatID int64, token int64, page int) {
+func (b *Bot) repeatSearch(ctx context.Context, chatID int64, lang i18n.Lang, token int64, page int) {
 	query, ok := b.loadSearchQuery(token)
 	if !ok {
-		b.reply(chatID, "⌛️ این جستجو منقضی شده. لطفاً دوباره تایپ کنید.", nil)
+		b.reply(chatID, i18n.T(lang, "search_error"), nil)
 		return
 	}
 	q := url.Values{}
@@ -195,57 +219,57 @@ func (b *Bot) repeatSearch(ctx context.Context, chatID int64, token int64, page 
 	q.Set("page", fmt.Sprint(page))
 	resp, err := b.Client.ListAnime(ctx, q)
 	if err != nil {
-		b.reply(chatID, "❌ خطا در جستجو.", nil)
+		b.reply(chatID, i18n.T(lang, "search_error"), nil)
 		return
 	}
-	b.sendAnimeSearchResults(chatID, resp.Items, resp.Total, page, fmt.Sprintf("sq:%d", token), "🔎 نتایج جستجو برای: "+query)
+	b.sendAnimeSearchResults(chatID, lang, resp.Items, resp.Total, page, fmt.Sprintf("sq:%d", token), i18n.Tf(lang, "search_results_header", query))
 }
 
-func (b *Bot) listFavorites(ctx context.Context, chatID, telegramUserID int64, page int) {
-	userID, err := b.ensureUser(ctx, &tgbotapi.User{ID: telegramUserID})
+func (b *Bot) listFavorites(ctx context.Context, chatID int64, lang i18n.Lang, telegramUserID int64, page int) {
+	userID, _, err := b.ensureUser(ctx, &tgbotapi.User{ID: telegramUserID})
 	if err != nil || userID == 0 {
-		b.reply(chatID, "❌ خطا.", nil)
+		b.reply(chatID, i18n.T(lang, "generic_error"), nil)
 		return
 	}
 	resp, err := b.Client.ListFavorites(ctx, userID, page)
 	if err != nil {
-		b.reply(chatID, "❌ خطا در دریافت علاقه‌مندی‌ها.", nil)
+		b.reply(chatID, i18n.T(lang, "favorite_error"), nil)
 		return
 	}
 	if len(resp.Items) == 0 {
-		b.reply(chatID, "هنوز چیزی به علاقه‌مندی‌ها اضافه نکرده‌اید. ❤️", nil)
+		b.reply(chatID, i18n.T(lang, "favorites_empty"), nil)
 		return
 	}
-	b.sendAnimeSearchResults(chatID, resp.Items, resp.Total, page, "m:favorites", "❤️ علاقه‌مندی‌های شما:")
+	b.sendAnimeSearchResults(chatID, lang, resp.Items, resp.Total, page, "m:favorites", i18n.T(lang, "favorites_header"))
 }
 
-func (b *Bot) listHistory(ctx context.Context, chatID, telegramUserID int64, page int) {
-	userID, err := b.ensureUser(ctx, &tgbotapi.User{ID: telegramUserID})
+func (b *Bot) listHistory(ctx context.Context, chatID int64, lang i18n.Lang, telegramUserID int64, page int) {
+	userID, _, err := b.ensureUser(ctx, &tgbotapi.User{ID: telegramUserID})
 	if err != nil || userID == 0 {
-		b.reply(chatID, "❌ خطا.", nil)
+		b.reply(chatID, i18n.T(lang, "generic_error"), nil)
 		return
 	}
 	resp, err := b.Client.ContinueWatching(ctx, userID)
 	if err != nil {
-		b.reply(chatID, "❌ خطا در دریافت تاریخچه.", nil)
+		b.reply(chatID, i18n.T(lang, "history_error"), nil)
 		return
 	}
 	if len(resp) == 0 {
-		b.reply(chatID, "تاریخچه‌ای موجود نیست. 🕒", nil)
+		b.reply(chatID, i18n.T(lang, "history_empty"), nil)
 		return
 	}
 	var rows [][]tgbotapi.InlineKeyboardButton
 	for _, entry := range resp {
-		label := fmt.Sprintf("قسمت #%d", entry.EpisodeID)
+		label := i18n.Tf(lang, "history_episode_label", entry.EpisodeID)
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("w:%d", entry.EpisodeID)),
 		))
 	}
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(keyboards.BackToMainRow()))
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(keyboards.BackToMainRow(lang)))
 	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
-	b.reply(chatID, "🕒 تاریخچه تماشای شما:", &kb)
+	b.reply(chatID, i18n.T(lang, "history_header"), &kb)
 }
 
-func (b *Bot) listContinueWatching(ctx context.Context, chatID, telegramUserID int64) {
-	b.listHistory(ctx, chatID, telegramUserID, 1)
+func (b *Bot) listContinueWatching(ctx context.Context, chatID int64, lang i18n.Lang, telegramUserID int64) {
+	b.listHistory(ctx, chatID, lang, telegramUserID, 1)
 }

@@ -34,6 +34,7 @@ func NewRouter(h *Handler, internalAPIKey string) chi.Router {
 		r.Get("/studios", h.ListStudios)
 
 		r.Post("/users", h.TouchUser)
+		r.Post("/users/language", h.SetLanguage)
 		r.Post("/favorites/toggle", h.ToggleFavorite)
 		r.Get("/users/{userID}/favorites", h.ListFavorites)
 		r.Post("/history", h.RecordProgress)

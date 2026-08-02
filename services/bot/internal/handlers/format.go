@@ -5,15 +5,16 @@ import (
 	"strings"
 
 	"popular-anime-bot/bot/internal/apiclient"
+	"popular-anime-bot/bot/internal/i18n"
 )
 
-var statusLabels = map[string]string{
-	"ongoing":   "🟢 در حال پخش",
-	"completed": "✅ تکمیل‌شده",
-	"announced": "📢 اعلام‌شده",
+var statusKeys = map[string]string{
+	"ongoing":   "status_ongoing",
+	"completed": "status_completed",
+	"announced": "status_announced",
 }
 
-func formatAnimeCaption(a apiclient.Anime) string {
+func formatAnimeCaption(lang i18n.Lang, a apiclient.Anime) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "🎬 <b>%s</b>\n", htmlEscape(a.Title))
@@ -30,22 +31,22 @@ func formatAnimeCaption(a apiclient.Anime) string {
 		for _, g := range a.Genres {
 			names = append(names, g.NamePersian)
 		}
-		fmt.Fprintf(&b, "🎭 ژانر: %s\n", strings.Join(names, "، "))
+		fmt.Fprintf(&b, "%s\n", i18n.Tf(lang, "caption_genre", strings.Join(names, "، ")))
 	}
 	if a.StudioName != "" {
-		fmt.Fprintf(&b, "🏢 استودیو: %s\n", htmlEscape(a.StudioName))
+		fmt.Fprintf(&b, "%s\n", i18n.Tf(lang, "caption_studio", htmlEscape(a.StudioName)))
 	}
 	if a.Year != nil {
-		fmt.Fprintf(&b, "📅 سال: %d\n", *a.Year)
+		fmt.Fprintf(&b, "%s\n", i18n.Tf(lang, "caption_year", *a.Year))
 	}
-	if label, ok := statusLabels[a.Status]; ok {
-		fmt.Fprintf(&b, "📺 وضعیت: %s\n", label)
+	if key, ok := statusKeys[a.Status]; ok {
+		fmt.Fprintf(&b, "%s\n", i18n.Tf(lang, "caption_status", i18n.T(lang, key)))
 	}
-	fmt.Fprintf(&b, "⭐ امتیاز: %.1f\n", a.RatingScore)
-	fmt.Fprintf(&b, "🎞 تعداد قسمت‌ها: %d\n", a.EpisodesCount)
+	fmt.Fprintf(&b, "%s\n", i18n.Tf(lang, "caption_rating", a.RatingScore))
+	fmt.Fprintf(&b, "%s\n", i18n.Tf(lang, "caption_episodes_count", a.EpisodesCount))
 
 	if a.SynopsisPersian != nil && *a.SynopsisPersian != "" {
-		fmt.Fprintf(&b, "\n📝 خلاصه داستان:\n%s\n", htmlEscape(*a.SynopsisPersian))
+		fmt.Fprintf(&b, "\n%s\n", i18n.Tf(lang, "caption_synopsis", htmlEscape(*a.SynopsisPersian)))
 	}
 
 	return b.String()

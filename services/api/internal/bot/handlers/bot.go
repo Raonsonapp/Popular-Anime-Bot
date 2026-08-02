@@ -9,14 +9,20 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"popular-anime-bot/api/internal/bot/apiclient"
+	"popular-anime-bot/api/internal/bot/i18n"
 )
+
+type userInfo struct {
+	id   int64
+	lang i18n.Lang
+}
 
 type Bot struct {
 	API    *tgbotapi.BotAPI
 	Client *apiclient.Client
 	Logger *slog.Logger
 
-	userIDCache sync.Map // telegram user id -> internal user id
+	userCache sync.Map // telegram user id -> userInfo
 
 	// Search queries can't be embedded directly in callback_data (Telegram's
 	// 64-byte limit), so pagination on search results goes through a short
@@ -78,22 +84,34 @@ func (b *Bot) dispatch(ctx context.Context, update tgbotapi.Update) {
 }
 
 // ensureUser upserts the Telegram user in the catalog and returns the
-// internal (DB) user id, caching the mapping to avoid a round trip per update.
-func (b *Bot) ensureUser(ctx context.Context, from *tgbotapi.User) (int64, error) {
+// internal (DB) user id and their language preference, caching the mapping
+// to avoid a round trip per update.
+func (b *Bot) ensureUser(ctx context.Context, from *tgbotapi.User) (int64, i18n.Lang, error) {
 	if from == nil {
-		return 0, nil
+		return 0, i18n.Default, nil
 	}
-	if cached, ok := b.userIDCache.Load(from.ID); ok {
-		return cached.(int64), nil
+	if cached, ok := b.userCache.Load(from.ID); ok {
+		info := cached.(userInfo)
+		return info.id, info.lang, nil
 	}
 
-	lang := "fa"
-	u, err := b.Client.TouchUser(ctx, from.ID, from.UserName, from.FirstName, lang)
+	u, err := b.Client.TouchUser(ctx, from.ID, from.UserName, from.FirstName, string(i18n.Default))
 	if err != nil {
-		return 0, err
+		return 0, i18n.Default, err
 	}
-	b.userIDCache.Store(from.ID, u.ID)
-	return u.ID, nil
+	lang := i18n.Normalize(u.LanguagePref)
+	b.userCache.Store(from.ID, userInfo{id: u.ID, lang: lang})
+	return u.ID, lang, nil
+}
+
+// setUserLang updates the cached language immediately after the user picks
+// a new one, without waiting for another TouchUser round trip.
+func (b *Bot) setUserLang(telegramUserID int64, lang i18n.Lang) {
+	if cached, ok := b.userCache.Load(telegramUserID); ok {
+		info := cached.(userInfo)
+		info.lang = lang
+		b.userCache.Store(telegramUserID, info)
+	}
 }
 
 func (b *Bot) reply(chatID int64, text string, kb *tgbotapi.InlineKeyboardMarkup) {

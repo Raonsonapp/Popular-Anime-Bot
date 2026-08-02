@@ -28,6 +28,24 @@ func (h *Handler) TouchUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, u)
 }
 
+type setLanguageRequest struct {
+	TelegramUserID int64  `json:"telegram_user_id"`
+	Language       string `json:"language"`
+}
+
+func (h *Handler) SetLanguage(w http.ResponseWriter, r *http.Request) {
+	var req setLanguageRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := h.Users.SetLanguage(r.Context(), req.TelegramUserID, req.Language); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to set language")
+		return
+	}
+	writeJSON(w, http.StatusNoContent, nil)
+}
+
 type toggleFavoriteRequest struct {
 	UserID  int64 `json:"user_id"`
 	AnimeID int64 `json:"anime_id"`
