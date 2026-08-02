@@ -13,7 +13,7 @@ from telethon.tl.types import DocumentAttributeVideo
 from api_client import ApiClient
 from config import Config
 from deep_link_fetcher import extract_episode_deep_links, fetch_episode_file, relay_to_storage
-from parser import is_adult_content, parse_post
+from parser import is_adult_content, is_subtitle_only, parse_post
 from translator import translate_to_persian
 
 BETWEEN_LINKED_EPISODES_DELAY = 3  # be gentle - each one drives a second bot
@@ -59,6 +59,11 @@ async def handle_episode(client: TelegramClient, api: ApiClient, channel: dict, 
         await api.create_import_log(channel["id"], message.id, "skipped", detail="adult content marker matched")
         return
 
+    if is_subtitle_only(text):
+        logger.info("skipping subtitle-only (non-dubbed) message %s ('%s')", message.id, parsed.title)
+        await api.create_import_log(channel["id"], message.id, "skipped", detail="Persian-subtitle-only, not dubbed")
+        return
+
     storage_message_id = await resolve_storage_message_id(client, channel, message)
 
     title_persian = translate_to_persian(parsed.title, channel["source_language"], Config.TRANSLATE_ENABLED)
@@ -101,6 +106,11 @@ async def handle_announcement(client: TelegramClient, api: ApiClient, channel: d
     if is_adult_content(parsed, text):
         logger.info("skipping adult-flagged message %s ('%s')", message.id, parsed.title)
         await api.create_import_log(channel["id"], message.id, "skipped", detail="adult content marker matched")
+        return
+
+    if is_subtitle_only(text):
+        logger.info("skipping subtitle-only (non-dubbed) message %s ('%s')", message.id, parsed.title)
+        await api.create_import_log(channel["id"], message.id, "skipped", detail="Persian-subtitle-only, not dubbed")
         return
 
     poster_chat_id = None

@@ -26,7 +26,14 @@ from config import Config
 
 logger = logging.getLogger("deep_link_fetcher")
 
-DEEP_LINK_RE = re.compile(r"t\.me/([A-Za-z0-9_]{5,32})\?start=([A-Za-z0-9_\-]+)", re.IGNORECASE)
+# Two ways a deep link shows up in the wild: a normal t.me/<domain mirror>
+# URL, or Telegram Desktop/some bots' own "tg://resolve?domain=...&start=..."
+# scheme - both need to be recognized, or extraction silently finds nothing.
+DEEP_LINK_RE = re.compile(
+    r"(?:t(?:elegram)?\.me|telegram\.dog)/(?P<user1>[A-Za-z0-9_]{5,32})/?\?start=(?P<param1>[A-Za-z0-9_\-]+)"
+    r"|tg://resolve\?domain=(?P<user2>[A-Za-z0-9_]{5,32})&start=(?P<param2>[A-Za-z0-9_\-]+)",
+    re.IGNORECASE,
+)
 EPISODE_NUMBER_RE = re.compile(r"(\d{1,4})")
 SPONSOR_CHANNEL_RE = re.compile(r"t\.me/([A-Za-z0-9_]{5,32})/?$", re.IGNORECASE)
 
@@ -34,11 +41,23 @@ RESPONSE_TIMEOUT = 25  # seconds to wait for the delivery bot to reply
 MAX_JOIN_RETRIES = 2
 
 
+def _parse_deep_link(url: str):
+    m = DEEP_LINK_RE.search(url or "")
+    if not m:
+        return None
+    bot_username = m.group("user1") or m.group("user2")
+    start_param = m.group("param1") or m.group("param2")
+    return bot_username, start_param
+
+
 def extract_episode_deep_links(message) -> list[dict]:
     """Returns [{"episode_number": int|None, "bot_username": str, "start_param": str}, ...]
-    for every hidden hyperlink in the message that points at a bot's
-    /start deep link."""
+    for every deep link the post points at a delivery bot with - whether
+    it's hidden behind hyperlinked caption text or an inline button
+    attached under the post (both are common, depending on the channel)."""
     links = []
+    seen = set()
+
     for entity, entity_text in message.get_entities_text():
         if isinstance(entity, MessageEntityTextUrl):
             url = entity.url
@@ -46,19 +65,42 @@ def extract_episode_deep_links(message) -> list[dict]:
             url = entity_text
         else:
             continue
-
-        m = DEEP_LINK_RE.search(url or "")
-        if not m:
+        parsed = _parse_deep_link(url)
+        if not parsed:
             continue
-
+        bot_username, start_param = parsed
+        if (bot_username, start_param) in seen:
+            continue
+        seen.add((bot_username, start_param))
         ep_match = EPISODE_NUMBER_RE.search(entity_text)
         links.append(
             {
                 "episode_number": int(ep_match.group(1)) if ep_match else None,
-                "bot_username": m.group(1),
-                "start_param": m.group(2),
+                "bot_username": bot_username,
+                "start_param": start_param,
             }
         )
+
+    for row in message.buttons or []:
+        for button in row:
+            if not button.url:
+                continue
+            parsed = _parse_deep_link(button.url)
+            if not parsed:
+                continue
+            bot_username, start_param = parsed
+            if (bot_username, start_param) in seen:
+                continue
+            seen.add((bot_username, start_param))
+            ep_match = EPISODE_NUMBER_RE.search(button.text or "")
+            links.append(
+                {
+                    "episode_number": int(ep_match.group(1)) if ep_match else None,
+                    "bot_username": bot_username,
+                    "start_param": start_param,
+                }
+            )
+
     return links
 
 

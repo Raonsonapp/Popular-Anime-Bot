@@ -32,6 +32,12 @@ ADULT_CONTENT_MARKERS = (
     "explicit content",
 )
 
+# The user only wants Persian-DUBBED anime (audio track), not
+# subtitled-only releases. Some posts self-label which one they are (e.g.
+# "زیرنویس فارسی چسبیده" - hardsubbed Persian subtitle, no dub at all).
+SUBTITLE_MARKERS = ("زیرنویس", "زیر نویس", "زیرنوشت", "hardsub", "softsub", "subtitle", "sub:")
+DUB_MARKERS = ("دوبله", "دوبلاژ", "dubbed", "dub:")
+
 QUALITY_RE = re.compile(r"\b(480p|720p|1080p|2160p|4k)\b", re.IGNORECASE)
 EPISODE_RE = re.compile(
     r"(?:episode|epi?sode|\bep\b|قسمت|серия|эпизод)\s*[\-:#]?\s*(\d{1,4})", re.IGNORECASE
@@ -75,6 +81,16 @@ def is_adult_content(parsed: ParsedPost, raw_text: str) -> bool:
     raw caption (covers warning lines the structured fields don't capture)."""
     haystack = " ".join([parsed.title, " ".join(parsed.genres), raw_text or ""]).lower()
     return any(marker in haystack for marker in ADULT_CONTENT_MARKERS)
+
+
+def is_subtitle_only(raw_text: str) -> bool:
+    """True if the post explicitly labels itself as Persian-subtitled with
+    no mention of a Persian dub - the user wants dubbed audio only, not
+    subtitles over the original audio."""
+    haystack = (raw_text or "").lower()
+    has_subtitle_marker = any(marker.lower() in haystack for marker in SUBTITLE_MARKERS)
+    has_dub_marker = any(marker.lower() in haystack for marker in DUB_MARKERS)
+    return has_subtitle_marker and not has_dub_marker
 
 
 def parse_post(text: str) -> ParsedPost:
