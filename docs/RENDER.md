@@ -1,52 +1,57 @@
 # Deploying to Render
 
 This covers the setup for `https://popular-anime-bot.onrender.com`. Render's
-free tier only keeps HTTP-serving **Web Services** alive for free
-(Background Workers require a paid plan), so this deployment runs the
-**API and the Telegram bot together in one process**, on one free Web
-Service, listening on one port:
+free tier only keeps one thing alive for free per service: an HTTP-serving
+**Web Service**. So this deployment runs **everything that can share one
+container in that single service**: the API, the Telegram bot, and the
+MTProto listener all run together, as separate processes inside one
+container (`entrypoint.sh` starts them). Only `scheduler` is left out - see
+the note at the bottom.
 
 - The bot runs in **webhook mode**: Telegram pushes updates to us over
   HTTPS instead of us long-polling, so it fits the same HTTP server the
   API already runs (mounted at `/webhook`).
-- `mtproto-listener` can also run as its own free Render Web Service - it
-  binds a tiny `/healthz` endpoint to `$PORT` just to satisfy Render, while
-  the actual work (watching Telegram) happens in the background. See
-  section 6 below.
+- The MTProto listener runs as a background process in the same
+  container, talking to the API over `localhost` (no public URL needed).
 - `scheduler` still needs to run somewhere else (a VPS via
   `docker compose`, see `docs/DEPLOYMENT.md`) - it's cron-driven, not
-  request-driven, so there's no free way to run it on Render.
+  request-driven, so there's no way to fit it into this same container.
 
-(The standalone `services/bot` also still works unchanged for VPS/
-docker-compose setups that prefer long-polling and a separate process -
-this Render path is an alternative for the free-tier case, not a
-replacement.)
+(The standalone `services/bot` and `services/mtproto-listener` also still
+work unchanged for a proper multi-container VPS deployment via
+`docker-compose.yml` - this single-service Render path is a free-tier
+alternative, not a replacement.)
 
 ## 1. Service settings on Render
 
 If the Web Service was created with default settings pointing at this repo
 with runtime **Docker**, it already builds the right thing: the root-level
-`Dockerfile` builds `services/api`, which now includes the bot's logic as
-an internal package. Nothing to change unless you'd previously set a
-custom Dockerfile path/root directory - in that case, point both back to
-the repo root.
+`Dockerfile` builds the Go binary (API + bot) and bundles the Python
+listener alongside it, then `entrypoint.sh` starts both. Nothing to change
+unless you'd previously set a custom Dockerfile path/root directory - in
+that case, point both back to the repo root.
 
 ## 2. Environment variables
 
 In the Render dashboard, under the service's **Environment** tab, set:
 
-| Key                | Value                                                                 |
-| ------------------ | ---------------------------------------------------------------------- |
-| `DATABASE_URL`     | Your Postgres connection string.                                      |
-| `INTERNAL_API_KEY` | A random secret - generate with `openssl rand -hex 32`.               |
-| `BOT_TOKEN`        | Your bot's token from @BotFather.                                     |
-| `WEBHOOK_URL`      | This service's own public Render URL, e.g. `https://popular-anime-bot.onrender.com` (no trailing path - the app appends `/webhook` itself). |
-| `WEBHOOK_SECRET`   | A random secret - generate with `openssl rand -hex 32`. Validated against Telegram's `X-Telegram-Bot-Api-Secret-Token` header so nobody else can POST fake updates to your webhook. |
+| Key                  | Value                                                                 |
+| -------------------- | ---------------------------------------------------------------------- |
+| `DATABASE_URL`       | Your Postgres connection string.                                      |
+| `INTERNAL_API_KEY`   | A random secret - generate with `openssl rand -hex 32`.               |
+| `BOT_TOKEN`          | Your bot's token from @BotFather.                                     |
+| `WEBHOOK_URL`        | This service's own public Render URL, e.g. `https://popular-anime-bot.onrender.com` (no trailing path - the app appends `/webhook` itself). |
+| `WEBHOOK_SECRET`     | A random secret - generate with `openssl rand -hex 32`.               |
+| `TELEGRAM_API_ID`    | From https://my.telegram.org - enables the listener. Leave unset to run without it. |
+| `TELEGRAM_API_HASH`  | From https://my.telegram.org.                                         |
+| `STORAGE_CHANNEL_ID` | Numeric id of your private "storage" channel, looks like `-100xxxxxxxxxx` (forward any message from it to @userinfobot to get this). Your bot must be **admin** there. |
 
-Don't set `PORT` - Render injects it automatically and the app reads it.
+Don't set `PORT` or `API_BASE_URL` - Render injects `PORT` automatically,
+and `entrypoint.sh` points the listener at the right local address itself.
 
-If `BOT_TOKEN` is left unset, the service just runs the API alone (no bot) -
-useful if you ever want to split them back into separate services later.
+Leaving `TELEGRAM_API_ID`/`TELEGRAM_API_HASH` unset just skips starting the
+listener (the API and bot still run normally) - useful if you want to add
+it later.
 
 ## 3. Apply the database schema (one time)
 
@@ -65,23 +70,56 @@ or Render Postgres's - pasting the file's contents there works too. If a
 single paste gets truncated by the editor, split it into a few smaller
 chunks at statement boundaries and run them one at a time.)
 
-## 4. Verify
+## 4. Verify the API and bot
 
 ```bash
 curl https://popular-anime-bot.onrender.com/healthz
 # {"status":"ok"}
 ```
 
-If it 500s or crash-loops, check the Render service logs first - almost
-always either `DATABASE_URL` is wrong/unreachable, or the migration hasn't
-been applied yet.
+Then send `/start` to your bot in Telegram - it should reply immediately.
+If not, check the Render logs for `bot authorized` / `bot webhook mounted`.
 
-Then send `/start` to your bot in Telegram. The service calls Telegram's
-`setWebhook` itself on startup - no manual step needed. If nothing comes
-back, check the logs for `bot authorized` / `bot webhook mounted` lines to
-confirm it registered.
+## 5. One-time listener login
 
-## 5. Point the other services at it
+Open this service's **Shell** tab in Render and run:
+
+```bash
+cd listener
+python login.py
+```
+
+Enter your phone number, the code Telegram texts you, and your 2FA
+password if set. This writes the session file so the listener can
+reconnect without further interaction from then on.
+
+⚠️ **Disk persistence warning**: Render's free tier has no persistent
+disk, so this session file can be wiped on the next deploy/restart,
+requiring you to log in again the same way. If that becomes annoying,
+either add a paid persistent disk, or run the listener on a VPS instead
+(`docs/DEPLOYMENT.md`) where the session survives normally.
+
+## 6. Register source channels
+
+Still in the Shell, in the `listener` directory: edit the `CHANNELS` list
+at the top of `register_channels.py` with the `@usernames` you want the
+bot to pull anime from, then run:
+
+```bash
+python register_channels.py
+```
+
+It resolves each username to its numeric id, joins it with your account
+(needed so Telegram actually pushes new-message events to the listener),
+and registers it with the API - skipping anything already registered, so
+it's safe to re-run after adding more usernames.
+
+(Alternative: to manually register a channel by numeric id instead -
+e.g. the single-channel self-curated setup from `docs/DEPLOYMENT.md` where
+the source *is* your storage channel - `curl -X POST .../api/v1/source-channels`
+directly; see that doc for the exact command.)
+
+## 7. Point the scheduler at it (if you run one)
 
 Wherever you run `scheduler` (see `docs/DEPLOYMENT.md`), set:
 
@@ -90,99 +128,14 @@ API_BASE_URL=https://popular-anime-bot.onrender.com
 INTERNAL_API_KEY=<the same value you set on the Render service>
 ```
 
-## 6. Deploy the MTProto listener as a third Render Web Service
-
-The simplest setup if you don't have a channel you already have scraping
-permission for: create your own **private channel**, post anime videos
-into it yourself (caption format: title on the first line, then optional
-`Episode N`, quality tag, `Genre: ...` line - see `parser.py`), add your
-bot as **admin** there, and register that same channel as both the
-source and the storage channel. The listener detects this and skips the
-forward-to-storage step entirely - it just indexes what you post, in
-place.
-
-Create a **new** Web Service on Render, same repo/branch:
-
-- **Root Directory**: `services/mtproto-listener`
-- **Dockerfile Path**: `Dockerfile`
-
-Environment variables:
-
-| Key                  | Value                                                                 |
-| -------------------- | ---------------------------------------------------------------------- |
-| `TELEGRAM_API_ID`    | From https://my.telegram.org.                                         |
-| `TELEGRAM_API_HASH`  | From https://my.telegram.org.                                         |
-| `SESSION_NAME`       | `/data/userbot.session` (see the disk warning below).                 |
-| `STORAGE_CHANNEL_ID` | Your channel's numeric id, looks like `-100xxxxxxxxxx` (forward any message from it to @userinfobot to find it). |
-| `API_BASE_URL`       | `https://popular-anime-bot.onrender.com`                              |
-| `INTERNAL_API_KEY`   | The same value set on the main service.                               |
-
-Don't set `PORT` manually - Render injects it, and the listener starts a
-health endpoint on it automatically.
-
-**One-time login**: Render's free Web Services include a **Shell** tab.
-After the first deploy, open it and run:
-
-```bash
-python login.py
-```
-
-Enter your phone number, the code Telegram texts you, and your 2FA
-password if set. This writes the session file so the main process can
-reconnect without further interaction.
-
-**Register source channels** - the channels the listener should watch for
-new anime (separate from `STORAGE_CHANNEL_ID`, your private channel above,
-which is just where matched posts get filed away). Two ways:
-
-- **Already-existing public channels** (e.g. Farsi-dub anime channels you
-  follow): edit the `CHANNELS` list at the top of `register_channels.py`
-  with their `@usernames`, then in the Render Shell run:
-
-  ```bash
-  python register_channels.py
-  ```
-
-  It resolves each username to its numeric id, joins it with your
-  account (needed so Telegram actually pushes new-message events to the
-  listener), and registers it - skipping any already registered, so it's
-  safe to re-run after adding more usernames later.
-
-- **Manual registration** (e.g. for the single-channel self-curated setup
-  from `docs/DEPLOYMENT.md`, where the source *is* your storage channel):
-
-  ```bash
-  curl -X POST https://popular-anime-bot.onrender.com/api/v1/source-channels \
-    -H "X-Internal-Key: <INTERNAL_API_KEY>" \
-    -H "Content-Type: application/json" \
-    -d '{
-          "telegram_channel_id": -100xxxxxxxxxx,
-          "title": "My anime channel",
-          "source_language": "fa"
-        }'
-  ```
-
-Use `"source_language": "fa"` (or `"tg"`) for channels already in
-Persian/Tajik - that skips the RU/EN→FA machine translation step
-entirely, which is both faster and more accurate.
-
-⚠️ **Disk persistence warning**: Render's free tier has no persistent
-disk. The session file written by `login.py` can be wiped on the next
-deploy or restart, requiring you to log in again via the Shell. If this
-becomes annoying, either add a paid persistent disk to this service, or
-run the listener on a VPS instead (see `docs/DEPLOYMENT.md`) where the
-session survives normally.
-
 ## Notes / limitations
 
 - Render's free Web Service instance type sleeps after 15 minutes of
   inactivity and wakes on the next request (~a few seconds to ~50s of
-  cold-start delay, per Render's own warning). For the bot, that means the
-  first message after a period of silence may take a while to get a reply
-  while Telegram's webhook delivery wakes the container - normal for the
-  free tier, upgrade the instance type if it's a problem.
-- `scheduler` and `mtproto-listener` are not request-driven, so webhook
-  mode doesn't apply to them - they can't run on Render's free tier.
-  Running them as Render Background Workers is possible but requires a
-  paid plan per worker, plus a persistent disk for the MTProto session file
-  - see `docs/DEPLOYMENT.md` for the simpler single-VPS path for those two.
+  cold-start delay, per Render's own warning). While asleep, the listener
+  isn't watching Telegram either - new posts in your source channels will
+  only get picked up after something wakes the service back up (e.g. a
+  user messaging the bot). Upgrade the instance type if that gap matters.
+- `scheduler` isn't request-driven, so it can't share this container - it
+  still needs a VPS (`docs/DEPLOYMENT.md`) or a paid Render Background
+  Worker.
