@@ -83,7 +83,11 @@ remove channels without restarting the container), listens for
 `NewMessage` / `MessageEdited` / `MessageDeleted`, and does best-effort
 regex parsing (see `parser.py`) plus optional machine translation
 (`translator.py`, via `deep-translator`) before pushing structured data to
-the API.
+the API. Every message is also checked against `parser.is_adult_content`
+(title/genre/caption keyword and emoji matching) before anything is
+imported - flagged messages are skipped entirely (never forwarded to the
+storage channel, never added to the catalog). This is text-based only, so
+it catches self-labeled content but can't inspect image/video pixels.
 
 ### `services/scheduler` (Go)
 

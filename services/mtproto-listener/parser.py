@@ -11,6 +11,27 @@ NLP-based extractor down the line.
 import re
 from dataclasses import dataclass, field
 
+# Text-based signal for adult/18+ content. This only catches content that
+# is self-labeled (genre tags, warning emoji, etc.) - it can't inspect
+# image/video pixels, so it's a first line of defense, not a guarantee.
+ADULT_CONTENT_MARKERS = (
+    "🔞",
+    "18+",
+    "r18",
+    "r-18",
+    "nsfw",
+    "hentai",
+    "хентай",
+    "ecchi",
+    "эччи",
+    "porn",
+    "порно",
+    "xxx",
+    "erotic",
+    "эротик",
+    "explicit content",
+)
+
 QUALITY_RE = re.compile(r"\b(480p|720p|1080p|2160p|4k)\b", re.IGNORECASE)
 EPISODE_RE = re.compile(
     r"(?:episode|epi?sode|\bep\b|قسمت|серия|эпизод)\s*[\-:#]?\s*(\d{1,4})", re.IGNORECASE
@@ -46,6 +67,14 @@ def _clean_title(line: str) -> str:
     cleaned = EPISODE_RE.sub("", cleaned)
     cleaned = QUALITY_RE.sub("", cleaned)
     return re.sub(r"\s{2,}", " ", cleaned).strip(" -–:|")
+
+
+def is_adult_content(parsed: ParsedPost, raw_text: str) -> bool:
+    """Best-effort check for self-labeled adult/18+ content, so it never
+    gets imported into the catalog. Checks the title, genres, and the full
+    raw caption (covers warning lines the structured fields don't capture)."""
+    haystack = " ".join([parsed.title, " ".join(parsed.genres), raw_text or ""]).lower()
+    return any(marker in haystack for marker in ADULT_CONTENT_MARKERS)
 
 
 def parse_post(text: str) -> ParsedPost:

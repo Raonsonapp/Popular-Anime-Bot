@@ -11,7 +11,7 @@ from telethon.tl.types import DocumentAttributeVideo
 
 from api_client import ApiClient
 from config import Config
-from parser import parse_post
+from parser import is_adult_content, parse_post
 from translator import translate_to_persian
 
 logger = logging.getLogger("processor")
@@ -48,6 +48,11 @@ async def handle_episode(client: TelegramClient, api: ApiClient, channel: dict, 
     if not parsed.title:
         logger.warning("could not extract a title, skipping message %s", message.id)
         await api.create_import_log(channel["id"], message.id, "skipped", detail="no title extracted")
+        return
+
+    if is_adult_content(parsed, text):
+        logger.info("skipping adult-flagged message %s ('%s')", message.id, parsed.title)
+        await api.create_import_log(channel["id"], message.id, "skipped", detail="adult content marker matched")
         return
 
     storage_message_id = await resolve_storage_message_id(client, channel, message)
@@ -87,6 +92,11 @@ async def handle_announcement(client: TelegramClient, api: ApiClient, channel: d
     text = message.message or ""
     parsed = parse_post(text)
     if not parsed.title:
+        return
+
+    if is_adult_content(parsed, text):
+        logger.info("skipping adult-flagged message %s ('%s')", message.id, parsed.title)
+        await api.create_import_log(channel["id"], message.id, "skipped", detail="adult content marker matched")
         return
 
     poster_chat_id = None
