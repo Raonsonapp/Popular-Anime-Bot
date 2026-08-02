@@ -36,6 +36,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	bot.Run(ctx)
+	if cfg.WebhookURL != "" {
+		if err := bot.RunWebhook(ctx, cfg.Port, cfg.WebhookURL, cfg.WebhookSecret); err != nil {
+			logger.Error("webhook server", "error", err)
+			os.Exit(1)
+		}
+	} else {
+		bot.Run(ctx)
+	}
 	logger.Info("bot stopped")
 }
