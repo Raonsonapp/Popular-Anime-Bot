@@ -83,7 +83,12 @@ remove channels without restarting the container), listens for
 `NewMessage` / `MessageEdited` / `MessageDeleted`, and does best-effort
 regex parsing (see `parser.py`) plus optional machine translation
 (`translator.py`, via `deep-translator`) before pushing structured data to
-the API. Every message is also checked against `parser.is_adult_content`
+the API. Some source channels hide each episode behind a hyperlink into a
+separate "file delivery" bot instead of attaching the video to the post;
+`deep_link_fetcher.py` drives that flow with the same userbot session
+(tapping the link, joining a "sponsor" channel if demanded, relaying the
+resulting file into the storage channel) so those still end up as real,
+playable episodes. Every message is also checked against `parser.is_adult_content`
 (title/genre/caption keyword and emoji matching) before anything is
 imported - flagged messages are skipped entirely (never forwarded to the
 storage channel, never added to the catalog). This is text-based only, so

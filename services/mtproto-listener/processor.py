@@ -4,6 +4,7 @@ backfill (backfill.py, for messages that existed before the channel was
 registered).
 """
 
+import asyncio
 import logging
 
 from telethon import TelegramClient
@@ -11,8 +12,11 @@ from telethon.tl.types import DocumentAttributeVideo
 
 from api_client import ApiClient
 from config import Config
+from deep_link_fetcher import extract_episode_deep_links, fetch_episode_file, relay_to_storage
 from parser import is_adult_content, parse_post
 from translator import translate_to_persian
+
+BETWEEN_LINKED_EPISODES_DELAY = 3  # be gentle - each one drives a second bot
 
 logger = logging.getLogger("processor")
 
@@ -130,6 +134,54 @@ async def handle_announcement(client: TelegramClient, api: ApiClient, channel: d
     anime = await api.upsert_anime(payload)
     await api.create_import_log(channel["id"], message.id, "new", detail="anime announcement", anime_id=anime["id"])
     logger.info("imported/updated anime announcement '%s' (id=%s)", title_persian, anime["id"])
+
+    if Config.FETCH_LINKED_EPISODES:
+        await fetch_linked_episodes(client, api, channel, message, anime["id"], parsed.quality)
+
+
+async def fetch_linked_episodes(client: TelegramClient, api: ApiClient, channel: dict, message, anime_id: int, quality: str):
+    """Some channels hide each episode behind a link into a separate file
+    delivery bot instead of attaching the video to the post (see
+    deep_link_fetcher.py). Best-effort: fetch each numbered one and store
+    it like a normal episode."""
+    links = [link for link in extract_episode_deep_links(message) if link["episode_number"] is not None]
+    if not links:
+        return
+
+    for link in links:
+        try:
+            file_message = await fetch_episode_file(client, link["bot_username"], link["start_param"])
+            if not file_message:
+                await api.create_import_log(
+                    channel["id"], message.id, "skipped",
+                    detail=f"linked episode {link['episode_number']} via @{link['bot_username']} did not arrive",
+                )
+                continue
+
+            storage_message_id = await relay_to_storage(client, file_message)
+            episode = await api.upsert_episode(
+                {
+                    "anime_id": anime_id,
+                    "episode_number": link["episode_number"],
+                    "quality": quality,
+                    "storage_chat_id": Config.STORAGE_CHANNEL_ID,
+                    "storage_message_id": storage_message_id,
+                    "source_channel_id": channel["id"],
+                    # Synthetic but stable/unique per episode so re-processing
+                    # this same announcement updates rather than duplicates.
+                    "source_message_id": message.id * 1000 + link["episode_number"],
+                }
+            )
+            await api.create_import_log(
+                channel["id"], message.id, "new",
+                detail=f"linked episode {link['episode_number']} via @{link['bot_username']}",
+                anime_id=anime_id, episode_id=episode["id"],
+            )
+            logger.info("fetched linked episode %s for anime %s via @%s", link["episode_number"], anime_id, link["bot_username"])
+        except Exception:
+            logger.exception("failed to fetch linked episode %s via @%s", link.get("episode_number"), link.get("bot_username"))
+
+        await asyncio.sleep(BETWEEN_LINKED_EPISODES_DELAY)
 
 
 def should_process(message) -> str | None:

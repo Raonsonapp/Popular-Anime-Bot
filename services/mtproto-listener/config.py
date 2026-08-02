@@ -34,3 +34,11 @@ class Config:
     CHANNEL_REFRESH_SECONDS = _int("CHANNEL_REFRESH_SECONDS", 60)
     AUTO_PUBLISH = _bool("AUTO_PUBLISH", True)
     TRANSLATE_ENABLED = _bool("TRANSLATE_ENABLED", True)
+
+    # Some source channels hide each episode behind a link into a separate
+    # "file delivery" bot instead of attaching the video directly. When
+    # enabled, the userbot follows those links itself (see
+    # deep_link_fetcher.py) - including joining a "sponsor" channel a
+    # delivery bot may demand first - so real episodes make it into the
+    # catalog instead of poster-only metadata.
+    FETCH_LINKED_EPISODES = _bool("FETCH_LINKED_EPISODES", True)
