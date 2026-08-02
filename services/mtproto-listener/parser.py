@@ -37,6 +37,11 @@ ADULT_CONTENT_MARKERS = (
 # "زیرنویس فارسی چسبیده" - hardsubbed Persian subtitle, no dub at all).
 SUBTITLE_MARKERS = ("زیرنویس", "زیر نویس", "زیرنوشت", "hardsub", "softsub", "subtitle", "sub:")
 DUB_MARKERS = ("دوبله", "دوبلاژ", "dubbed", "dub:")
+# "بدون زیرنویس" = "without subtitles" - a post saying this is boasting
+# it's PURE dub with no subtitles at all, so a plain substring match on
+# SUBTITLE_MARKERS would otherwise misread this as subtitle-only and wrongly
+# discard genuinely dubbed content.
+NEGATED_SUBTITLE_RE = re.compile(r"(?:بدون|بی|no|without)\s*(?:هیچ\s*)?(?:زیرنویس|زیر\s*نویس|subtitle)", re.IGNORECASE)
 
 # Telegram itself injects this placeholder text (in the viewer's own
 # client, not the actual message) when a message was taken down over a
@@ -106,7 +111,10 @@ def is_subtitle_only(raw_text: str) -> bool:
     """True if the post explicitly labels itself as Persian-subtitled with
     no mention of a Persian dub - the user wants dubbed audio only, not
     subtitles over the original audio."""
-    haystack = (raw_text or "").lower()
+    text = raw_text or ""
+    if NEGATED_SUBTITLE_RE.search(text):
+        return False  # "without subtitles" is a pro-dub statement, not a subtitle marker
+    haystack = text.lower()
     has_subtitle_marker = any(marker.lower() in haystack for marker in SUBTITLE_MARKERS)
     has_dub_marker = any(marker.lower() in haystack for marker in DUB_MARKERS)
     return has_subtitle_marker and not has_dub_marker
