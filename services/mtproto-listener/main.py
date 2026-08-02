@@ -120,7 +120,12 @@ async def main():
         )
 
     try:
-        await client.run_until_disconnected()
+        # Not run_until_disconnected() - it calls GetStateRequest to catch
+        # up on missed updates, which raises AuthKeyUnregisteredError before
+        # a session is authorized (i.e. before the web login flow below
+        # completes). Waiting on the raw disconnect future instead works
+        # the same either way and never makes that pre-auth request.
+        await client.disconnected
     finally:
         await api.close()
 
