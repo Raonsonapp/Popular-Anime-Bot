@@ -52,15 +52,12 @@ services:
     environment:
       TELEGRAM_API_ID: ${TELEGRAM_API_ID}
       TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
-      SESSION_NAME: ${SESSION_NAME}
       STORAGE_CHANNEL_ID: ${STORAGE_CHANNEL_ID}
       API_BASE_URL: ${API_BASE_URL}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       CHANNEL_REFRESH_SECONDS: ${CHANNEL_REFRESH_SECONDS}
       AUTO_PUBLISH: ${AUTO_PUBLISH}
       TRANSLATE_ENABLED: ${TRANSLATE_ENABLED}
-    volumes:
-      - listener_session:/data
     depends_on:
       - api
 
@@ -82,4 +79,3 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  listener_session:

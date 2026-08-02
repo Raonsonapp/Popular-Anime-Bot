@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 
 from api_client import ApiClient
 from config import Config
@@ -13,6 +14,7 @@ logger = logging.getLogger("mtproto-listener")
 
 # telegram_channel_id -> source_channel dict (id, source_language, ...)
 active_channels: dict[int, dict] = {}
+_listener_started = False
 
 
 async def refresh_channels(api: ApiClient):
@@ -74,19 +76,19 @@ def build_handlers(client: TelegramClient, api: ApiClient):
                 logger.exception("failed to mark message %s deleted", message_id)
 
 
-async def start_health_server(port: str):
-    """Minimal HTTP server so this can run as a Render (or similar PaaS)
-    free-tier "web service", which requires something bound to $PORT.
-    Not used for docker-compose/VPS deployments."""
-    from aiohttp import web
-
-    app = web.Application()
-    app.router.add_get("/healthz", lambda request: web.Response(text="ok"))
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", int(port))
-    await site.start()
-    logger.info("health server listening on port %s", port)
+async def start_listening(client: TelegramClient, api: ApiClient):
+    """Registers message handlers and starts the channel-list refresher.
+    Called once the client is authorized - either immediately at startup
+    (a session saved in Postgres from a previous login was reused) or
+    right after a fresh web login completes - with no process restart
+    needed either way."""
+    global _listener_started
+    if _listener_started:
+        return
+    _listener_started = True
+    build_handlers(client, api)
+    asyncio.create_task(refresh_channels(api))
+    logger.info("MTProto listener active")
 
 
 async def main():
@@ -96,24 +98,30 @@ async def main():
         raise SystemExit("STORAGE_CHANNEL_ID is required")
 
     api = ApiClient(Config.API_BASE_URL, Config.INTERNAL_API_KEY)
-    client = TelegramClient(Config.SESSION_NAME, Config.API_ID, Config.API_HASH)
 
-    build_handlers(client, api)
+    saved_session = ""
+    try:
+        saved_session = await api.get_listener_session()
+    except Exception:
+        logger.exception("could not load a saved session from the API (continuing with a fresh login)")
 
-    if Config.PORT:
-        await start_health_server(Config.PORT)
+    client = TelegramClient(StringSession(saved_session), Config.API_ID, Config.API_HASH)
+    await client.connect()
 
-    await client.start()
-    logger.info("MTProto listener connected")
+    await start_control_server(client, api, lambda: start_listening(client, api))
 
-    await start_control_server(client)
-
-    refresh_task = asyncio.create_task(refresh_channels(api))
+    if await client.is_user_authorized():
+        logger.info("authorized using the session saved in Postgres - no login needed")
+        await start_listening(client, api)
+    else:
+        logger.info(
+            "no valid saved session yet - complete login once at "
+            "https://<this-service>/telegram-login/?key=<INTERNAL_API_KEY>"
+        )
 
     try:
         await client.run_until_disconnected()
     finally:
-        refresh_task.cancel()
         await api.close()
 
 

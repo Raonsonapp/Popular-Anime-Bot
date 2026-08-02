@@ -58,6 +58,9 @@ func NewRouter(h *Handler, internalAPIKey string) chi.Router {
 			r.Get("/publish/pending", h.ListPendingPosts)
 			r.Post("/publish/record", h.RecordPost)
 			r.Post("/publish/refresh-popularity", h.RefreshPopularity)
+
+			r.Get("/listener-session", h.GetListenerSession)
+			r.Put("/listener-session", h.SaveListenerSession)
 		})
 	})
 

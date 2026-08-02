@@ -11,16 +11,17 @@ import (
 )
 
 type Handler struct {
-	Catalog       *usecase.CatalogService
-	Ingest        *usecase.IngestService
-	Users         *usecase.UserService
-	Publish       *usecase.PublishService
-	SourceChannel domain.SourceChannelRepository
-	Logger        *slog.Logger
+	Catalog         *usecase.CatalogService
+	Ingest          *usecase.IngestService
+	Users           *usecase.UserService
+	Publish         *usecase.PublishService
+	SourceChannel   domain.SourceChannelRepository
+	ListenerSession domain.ListenerSessionRepository
+	Logger          *slog.Logger
 }
 
-func NewHandler(catalog *usecase.CatalogService, ingest *usecase.IngestService, users *usecase.UserService, publish *usecase.PublishService, sourceChannel domain.SourceChannelRepository, logger *slog.Logger) *Handler {
-	return &Handler{Catalog: catalog, Ingest: ingest, Users: users, Publish: publish, SourceChannel: sourceChannel, Logger: logger}
+func NewHandler(catalog *usecase.CatalogService, ingest *usecase.IngestService, users *usecase.UserService, publish *usecase.PublishService, sourceChannel domain.SourceChannelRepository, listenerSession domain.ListenerSessionRepository, logger *slog.Logger) *Handler {
+	return &Handler{Catalog: catalog, Ingest: ingest, Users: users, Publish: publish, SourceChannel: sourceChannel, ListenerSession: listenerSession, Logger: logger}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

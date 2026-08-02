@@ -68,6 +68,17 @@ class ApiClient:
             json={"source_channel_id": source_channel_id, "source_message_id": source_message_id},
         )
 
+    async def get_listener_session(self) -> str:
+        """Returns the Telethon StringSession saved from a previous login,
+        or "" if none has been saved yet."""
+        result = await self._request("GET", "/api/v1/listener-session")
+        return (result or {}).get("session_string", "")
+
+    async def save_listener_session(self, session_string: str):
+        """Persists the Telethon StringSession in Postgres so it survives
+        a PaaS redeploy that wipes local disk (e.g. Render's free tier)."""
+        await self._request("PUT", "/api/v1/listener-session", json={"session_string": session_string})
+
     async def create_import_log(
         self,
         source_channel_id: Optional[int],

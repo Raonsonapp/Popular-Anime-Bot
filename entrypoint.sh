@@ -10,31 +10,21 @@ set -e
 # same process group. Overrides anything set in the dashboard.
 export API_BASE_URL="http://localhost:${PORT:-8080}"
 
-SESSION_FILE="${SESSION_NAME:-/data/userbot.session}"
-
 if [ -n "$TELEGRAM_API_ID" ] && [ -n "$TELEGRAM_API_HASH" ]; then
     (
-        # PORT is unset here so neither the listener nor the login helper
-        # try to bind it - only the Go binary below needs to satisfy
-        # Render's port check.
+        # PORT is unset here so the listener doesn't try to bind it -
+        # only the Go binary below needs to satisfy Render's port check.
         cd /app/listener
         unset PORT
         while true; do
-            if [ -f "$SESSION_FILE" ]; then
-                python3 main.py || true
-                echo "[entrypoint] mtproto-listener exited, restarting in 5s..." >&2
-            else
-                # No session yet - client.start() would otherwise prompt
-                # for a phone number/code interactively, which has no
-                # terminal to read from here. Render's free tier has no
-                # Shell access either, so serve a tiny web-based login
-                # flow instead (see docs/RENDER.md) - once it succeeds it
-                # writes the session file and exits, and the next loop
-                # iteration starts the real listener automatically.
-                echo "[entrypoint] no session file at $SESSION_FILE yet - complete login at https://<this-service>/telegram-login/?key=<INTERNAL_API_KEY>" >&2
-                python3 weblogin_server.py || true
-                echo "[entrypoint] web login helper exited, re-checking in 5s..." >&2
-            fi
+            # main.py loads its session (if any) from Postgres via the
+            # API on every start, so it always picks up either a
+            # previously saved login or serves the web login flow at
+            # /telegram-login/?key=<INTERNAL_API_KEY> - no local session
+            # file involved, so this survives redeploys on hosts with no
+            # persistent disk (see docs/RENDER.md).
+            python3 main.py || true
+            echo "[entrypoint] mtproto-listener exited, restarting in 5s..." >&2
             sleep 5
         done
     ) &

@@ -72,3 +72,12 @@ type ChannelPostRepository interface {
 type ImportLogRepository interface {
 	Create(ctx context.Context, sourceChannelID *int64, telegramMessageID int64, action string, animeID, episodeID *int64, detail string, rawPayload []byte) error
 }
+
+// ListenerSessionRepository persists the MTProto userbot's Telethon
+// StringSession, so it survives a PaaS's ephemeral disk (e.g. Render's
+// free tier wiping local files on every redeploy) instead of requiring a
+// fresh login each time.
+type ListenerSessionRepository interface {
+	Get(ctx context.Context) (string, error) // "" if none stored yet
+	Save(ctx context.Context, sessionString string) error
+}

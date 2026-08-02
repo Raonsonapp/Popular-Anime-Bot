@@ -102,23 +102,24 @@ Then, in a browser:
    (replace `code=` with the real code).
 3. If your account has a 2FA password, step 2's page will tell you to
    instead open a `sign-in?...&password=YOUR_PASSWORD` link - do that.
-4. On success, the page lists which source channels got registered. The
-   real listener starts automatically within ~10 seconds - no restart
+4. On success, the page lists which source channels got registered, and
+   the listener starts immediately in the same process - no restart
    needed.
 
-⚠️ **Disk persistence warning**: Render's free tier has no persistent
-disk, so the session file can be wiped on a future deploy/restart,
-requiring you to repeat this login flow. If that becomes annoying, either
-add a paid persistent disk, or run the listener on a VPS instead
-(`docs/DEPLOYMENT.md`) where the session survives normally.
+✅ **This login only needs to happen once.** The session is saved as a
+Telethon StringSession in your Postgres database (via the API), not on
+Render's local disk - so it survives every future redeploy/restart even
+though Render's free tier has no persistent disk. If you ever see the
+`/telegram-login/` flow again unexpectedly, check the Render logs for API/
+database connection errors around startup.
 
 ## 6. Adding more source channels later
 
 Edit the `CHANNELS` list in `register_channels.py`, commit, and push -
-this redeploys the service (session file is preserved across a redeploy
-that doesn't wipe disk, only across a fresh container). Since the login
-flow already ran once, `main.py` is running normally; to pick up new
-channels without a full re-login, use the manual single-channel
+this redeploys the service, and the saved session (in Postgres) means it
+reconnects without needing the login flow again. But `register_channels.py`
+only runs automatically right after a login, so to pick up new channels
+without a full re-login, use the manual single-channel
 registration instead (works any time, no login flow needed):
 
 ```bash

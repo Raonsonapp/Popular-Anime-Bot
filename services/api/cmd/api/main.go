@@ -46,13 +46,14 @@ func main() {
 	historyRepo := postgres.NewHistoryRepo(db)
 	channelPostRepo := postgres.NewChannelPostRepo(db)
 	importLogRepo := postgres.NewImportLogRepo(db)
+	listenerSessionRepo := postgres.NewListenerSessionRepo(db)
 
 	catalog := usecase.NewCatalogService(animeRepo, episodeRepo, genreRepo, studioRepo)
 	ingest := usecase.NewIngestService(animeRepo, episodeRepo, genreRepo, studioRepo, sourceChannelRepo, importLogRepo)
 	users := usecase.NewUserService(userRepo, favoriteRepo, historyRepo)
 	publish := usecase.NewPublishService(animeRepo, channelPostRepo)
 
-	handler := httpDelivery.NewHandler(catalog, ingest, users, publish, sourceChannelRepo, logger)
+	handler := httpDelivery.NewHandler(catalog, ingest, users, publish, sourceChannelRepo, listenerSessionRepo, logger)
 	router := httpDelivery.NewRouter(handler, cfg.InternalAPIKey)
 
 	// Optionally embed the Telegram bot in this same process/port - lets a

@@ -111,10 +111,11 @@ See `migrations/0001_init.sql`. Highlights:
 
 ## Security notes
 
-- The MTProto `api_id`/`api_hash` and the userbot session file are the most
-  sensitive secrets in this system - anyone with the session file can act
-  as your Telegram account. Never commit them; `.gitignore` already
-  excludes `.env` and `*.session`.
+- The MTProto `api_id`/`api_hash` and the userbot session (a Telethon
+  StringSession, saved in the `listener_session` Postgres table) are the
+  most sensitive secrets in this system - anyone with the session string
+  can act as your Telegram account. Never commit them; `.gitignore`
+  already excludes `.env` and `*.session`.
 - Internal routes require `X-Internal-Key`; rotate it if it ever leaks.
 - Only import from channels you actually have permission to redistribute
   content from - this is a policy/legal concern the code can't enforce for

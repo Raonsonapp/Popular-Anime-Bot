@@ -133,3 +133,33 @@ func (h *Handler) RefreshPopularity(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusNoContent, nil)
 }
+
+func (h *Handler) GetListenerSession(w http.ResponseWriter, r *http.Request) {
+	sessionString, err := h.ListenerSession.Get(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load listener session")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"session_string": sessionString})
+}
+
+type saveListenerSessionRequest struct {
+	SessionString string `json:"session_string"`
+}
+
+func (h *Handler) SaveListenerSession(w http.ResponseWriter, r *http.Request) {
+	var req saveListenerSessionRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if req.SessionString == "" {
+		writeError(w, http.StatusBadRequest, "session_string is required")
+		return
+	}
+	if err := h.ListenerSession.Save(r.Context(), req.SessionString); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save listener session")
+		return
+	}
+	writeJSON(w, http.StatusNoContent, nil)
+}

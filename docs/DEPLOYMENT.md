@@ -60,9 +60,9 @@ docker compose run --rm mtproto-listener python login.py
 ```
 
 Enter your phone number, the login code Telegram texts you, and your 2FA
-password if you have one. This writes the session to the `listener_session`
-Docker volume so the long-running service can reconnect headlessly from
-then on.
+password if you have one. This saves the session to Postgres (via the
+API) so the long-running service can reconnect headlessly from then on -
+no Docker volume needed, and it survives container recreation.
 
 ## 5. Register your source channels
 
