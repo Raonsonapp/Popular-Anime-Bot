@@ -154,9 +154,18 @@ async def fetch_linked_episodes(client: TelegramClient, api: ApiClient, channel:
     delivery bot instead of attaching the video to the post (see
     deep_link_fetcher.py). Best-effort: fetch each numbered one and store
     it like a normal episode."""
-    links = [link for link in extract_episode_deep_links(message) if link["episode_number"] is not None]
-    if not links:
+    all_links = extract_episode_deep_links(message)
+    links = [link for link in all_links if link["episode_number"] is not None]
+    if not all_links:
+        logger.info("message %s: no delivery-bot deep links found (poster/metadata-only post)", message.id)
         return
+    if not links:
+        logger.info(
+            "message %s: found %d deep link(s) but couldn't read an episode number from any of them: %s",
+            message.id, len(all_links), [l["label"] for l in all_links],
+        )
+        return
+    logger.info("message %s: found %d linked episode(s), fetching...", message.id, len(links))
 
     for link in links:
         try:
