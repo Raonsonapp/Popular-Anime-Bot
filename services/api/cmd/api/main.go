@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -78,6 +80,14 @@ func main() {
 			runBotPolling = func() { bot.Run(ctx) }
 		}
 	}
+
+	// The MTProto listener's web-based login helper (used when Render's
+	// Shell isn't available, e.g. the free tier) runs on a local-only port
+	// inside the same container - proxy it through so it's reachable at
+	// this service's public URL. Harmless no-op (502s) once login is done
+	// and the helper has exited. See docs/RENDER.md.
+	loginTarget, _ := url.Parse("http://localhost:8091")
+	router.Handle("/telegram-login/*", httputil.NewSingleHostReverseProxy(loginTarget))
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

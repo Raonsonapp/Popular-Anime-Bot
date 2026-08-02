@@ -80,44 +80,61 @@ curl https://popular-anime-bot.onrender.com/healthz
 Then send `/start` to your bot in Telegram - it should reply immediately.
 If not, check the Render logs for `bot authorized` / `bot webhook mounted`.
 
-## 5. One-time listener login
+## 5. One-time listener login (no Shell needed)
 
-Open this service's **Shell** tab in Render and run:
+Render's **Shell** tab requires a paid plan, so logging in from a
+terminal isn't an option on the free tier. Instead, the service exposes a
+tiny web-based login flow at `/telegram-login/...`, completed entirely by
+opening links in your phone's browser - no app or terminal needed.
 
-```bash
-cd listener
-python login.py
-```
+Add the `CHANNELS` list you want the bot to pull anime from **before**
+logging in: edit `services/mtproto-listener/register_channels.py` in the
+repo (list of `("username", "language")` tuples), commit, and push - the
+login flow registers them automatically right after you sign in.
 
-Enter your phone number, the code Telegram texts you, and your 2FA
-password if set. This writes the session file so the listener can
-reconnect without further interaction from then on.
+Then, in a browser:
+
+1. Open `https://popular-anime-bot.onrender.com/telegram-login/send-code?key=<INTERNAL_API_KEY>&phone=992XXXXXXXXX`
+   (replace `<INTERNAL_API_KEY>` with your real value, and `phone=` with
+   your number, digits only, country code first, no `+` or spaces).
+2. Telegram sends you a login code in the app. Open:
+   `https://popular-anime-bot.onrender.com/telegram-login/sign-in?key=<INTERNAL_API_KEY>&code=12345`
+   (replace `code=` with the real code).
+3. If your account has a 2FA password, step 2's page will tell you to
+   instead open a `sign-in?...&password=YOUR_PASSWORD` link - do that.
+4. On success, the page lists which source channels got registered. The
+   real listener starts automatically within ~10 seconds - no restart
+   needed.
 
 ⚠️ **Disk persistence warning**: Render's free tier has no persistent
-disk, so this session file can be wiped on the next deploy/restart,
-requiring you to log in again the same way. If that becomes annoying,
-either add a paid persistent disk, or run the listener on a VPS instead
+disk, so the session file can be wiped on a future deploy/restart,
+requiring you to repeat this login flow. If that becomes annoying, either
+add a paid persistent disk, or run the listener on a VPS instead
 (`docs/DEPLOYMENT.md`) where the session survives normally.
 
-## 6. Register source channels
+## 6. Adding more source channels later
 
-Still in the Shell, in the `listener` directory: edit the `CHANNELS` list
-at the top of `register_channels.py` with the `@usernames` you want the
-bot to pull anime from, then run:
+Edit the `CHANNELS` list in `register_channels.py`, commit, and push -
+this redeploys the service (session file is preserved across a redeploy
+that doesn't wipe disk, only across a fresh container). Since the login
+flow already ran once, `main.py` is running normally; to pick up new
+channels without a full re-login, use the manual single-channel
+registration instead (works any time, no login flow needed):
 
 ```bash
-python register_channels.py
+curl -X POST https://popular-anime-bot.onrender.com/api/v1/source-channels \
+  -H "X-Internal-Key: <INTERNAL_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "telegram_channel_id": -100xxxxxxxxxx,
+        "title": "Channel title",
+        "source_language": "fa"
+      }'
 ```
 
-It resolves each username to its numeric id, joins it with your account
-(needed so Telegram actually pushes new-message events to the listener),
-and registers it with the API - skipping anything already registered, so
-it's safe to re-run after adding more usernames.
-
-(Alternative: to manually register a channel by numeric id instead -
-e.g. the single-channel self-curated setup from `docs/DEPLOYMENT.md` where
-the source *is* your storage channel - `curl -X POST .../api/v1/source-channels`
-directly; see that doc for the exact command.)
+(You still need the channel's numeric id and your account to already be
+a member/have joined it - the automatic username-resolving + join only
+happens during the `/telegram-login/sign-in` flow above.)
 
 ## 7. Point the scheduler at it (if you run one)
 
