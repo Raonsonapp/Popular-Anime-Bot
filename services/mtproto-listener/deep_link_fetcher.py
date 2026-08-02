@@ -43,12 +43,37 @@ DEEP_LINK_RE = re.compile(
 EPISODE_LABEL_RE = re.compile(
     r"(?:episode|eposide|epi?sode|\bep\b|قسمت|қисм|кисм)\s*[_\-:#]?\s*(\d{1,4})", re.IGNORECASE
 )
+# A single link covering a whole range (e.g. "E01_E20") - one /start gets a
+# stream of many files back, not one specific episode, so it needs
+# different handling (see fetch_batch_files) than a per-episode link.
+RANGE_LABEL_RE = re.compile(r"[Ee]?\d{1,4}\s*[-_–]\s*[Ee]?\d{1,4}")
+# The delivered file's own name/caption usually names its exact episode
+# (e.g. "Parasyte S01E03...") even when the *link* that fetched it only
+# pointed at a whole batch.
+SXXEXX_RE = re.compile(r"[Ss]\d{1,3}[Ee](\d{1,4})")
 SPONSOR_CHANNEL_RE = re.compile(r"t\.me/([A-Za-z0-9_]{5,32})/?$", re.IGNORECASE)
 
 
 def _episode_number_from_label(label: str) -> int | None:
     m = EPISODE_LABEL_RE.search(label or "")
     return int(m.group(1)) if m else None
+
+
+def episode_number_from_delivered(message) -> int | None:
+    """Best-effort episode number read straight off a delivered file - its
+    filename or caption usually spells it out explicitly (e.g. "...
+    S01E03..." or "Episode 3") even when the deep link that fetched it was
+    just a whole-batch link with no specific episode number of its own."""
+    for text in (getattr(message.file, "name", None), message.message):
+        if not text:
+            continue
+        m = SXXEXX_RE.search(text)
+        if m:
+            return int(m.group(1))
+        m = EPISODE_LABEL_RE.search(text)
+        if m:
+            return int(m.group(1))
+    return None
 
 # Many delivery bots don't send the file right after /start - they show an
 # anime "menu" (Watch / Episodes / etc. as callback buttons, not links)
@@ -117,9 +142,11 @@ def extract_episode_deep_links(message) -> list[dict]:
             continue
         seen.add((bot_username, start_param))
         label = _line_at(full_text, entity.offset)
+        episode_number = _episode_number_from_label(label) or _episode_number_from_label(entity_text)
         links.append(
             {
-                "episode_number": _episode_number_from_label(label) or _episode_number_from_label(entity_text),
+                "episode_number": episode_number,
+                "is_batch": episode_number is None and bool(RANGE_LABEL_RE.search(label)),
                 "bot_username": bot_username,
                 "start_param": start_param,
                 "label": label,
@@ -137,9 +164,11 @@ def extract_episode_deep_links(message) -> list[dict]:
             if (bot_username, start_param) in seen:
                 continue
             seen.add((bot_username, start_param))
+            episode_number = _episode_number_from_label(button.text)
             links.append(
                 {
-                    "episode_number": _episode_number_from_label(button.text),
+                    "episode_number": episode_number,
+                    "is_batch": episode_number is None and bool(RANGE_LABEL_RE.search(button.text or "")),
                     "bot_username": bot_username,
                     "start_param": start_param,
                     "label": button.text or "",
@@ -256,6 +285,78 @@ async def fetch_episode_file(client: TelegramClient, bot_username: str, start_pa
 
     logger.warning("@%s: gave up after %d join attempt(s)", bot_username, MAX_JOIN_RETRIES)
     return None
+
+
+BATCH_IDLE_TIMEOUT = 20  # seconds of silence before a batch is considered finished
+MAX_BATCH_FILES = 60
+
+
+async def _collect_batch(client: TelegramClient, bot_entity, start_param: str):
+    async with client.conversation(bot_entity, timeout=RESPONSE_TIMEOUT) as conv:
+        await conv.send_message(f"/start {start_param}")
+        files = []
+        while len(files) < MAX_BATCH_FILES:
+            try:
+                resp = await conv.get_response(timeout=BATCH_IDLE_TIMEOUT if files else RESPONSE_TIMEOUT)
+            except TimeoutError:
+                break  # the bot's gone quiet - the batch is done
+
+            if resp.video or resp.document:
+                files.append(resp)
+                continue
+
+            if not files:
+                # Only worth navigating menus/joining before anything has
+                # started arriving - once files are streaming in, stray
+                # text messages in between are just noise to ignore.
+                sponsor_channels = _sponsor_channels_requested(resp)
+                if sponsor_channels:
+                    return "join", sponsor_channels
+                next_button = _pick_menu_button(resp.buttons, None)
+                if next_button:
+                    await next_button.click()
+
+        return "files", files
+
+
+async def fetch_batch_files(client: TelegramClient, bot_username: str, start_param: str) -> list:
+    """Like fetch_episode_file, but for a single deep link that delivers
+    MANY episodes back to back (e.g. an "E01_E20" batch link) instead of
+    one specific episode - collects files until the bot goes quiet for
+    BATCH_IDLE_TIMEOUT seconds (or MAX_BATCH_FILES is hit). Each returned
+    message's own filename/caption is what identifies its episode number
+    (see episode_number_from_delivered) - the link itself doesn't say."""
+    try:
+        bot_entity = await client.get_entity(bot_username)
+    except Exception:
+        logger.warning("could not resolve delivery bot @%s", bot_username)
+        return []
+
+    joined: set[str] = set()
+    for _ in range(MAX_JOIN_RETRIES + 1):
+        try:
+            kind, payload = await _collect_batch(client, bot_entity, start_param)
+        except TimeoutError:
+            logger.warning("@%s: no response for start=%s within %ss", bot_username, start_param, RESPONSE_TIMEOUT)
+            return []
+
+        if kind == "files":
+            return payload
+
+        new_channels = [c for c in payload if c not in joined]
+        if not new_channels:
+            logger.warning("@%s keeps asking to join %s - giving up", bot_username, payload)
+            return []
+        for channel in new_channels:
+            joined.add(channel)
+            try:
+                await client(JoinChannelRequest(channel))
+                logger.info("joined sponsor channel @%s to unlock @%s batch delivery", channel, bot_username)
+            except Exception:
+                logger.warning("could not join sponsor channel @%s", channel)
+
+    logger.warning("@%s: gave up after %d join attempt(s)", bot_username, MAX_JOIN_RETRIES)
+    return []
 
 
 async def relay_to_storage(client: TelegramClient, message) -> int:

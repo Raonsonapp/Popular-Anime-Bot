@@ -12,7 +12,13 @@ from telethon.tl.types import DocumentAttributeVideo
 
 from api_client import ApiClient
 from config import Config
-from deep_link_fetcher import extract_episode_deep_links, fetch_episode_file, relay_to_storage
+from deep_link_fetcher import (
+    episode_number_from_delivered,
+    extract_episode_deep_links,
+    fetch_batch_files,
+    fetch_episode_file,
+    relay_to_storage,
+)
 from parser import is_adult_content, is_removed_placeholder, is_subtitle_only, parse_post
 from translator import translate_to_persian
 
@@ -157,25 +163,74 @@ async def handle_announcement(client: TelegramClient, api: ApiClient, channel: d
         await fetch_linked_episodes(client, api, channel, message, anime["id"], parsed.quality)
 
 
+async def _store_linked_episode(
+    api: ApiClient, client: TelegramClient, channel: dict, message, anime_id: int, quality: str,
+    episode_number: int, bot_username: str, file_message,
+):
+    """Shared tail end for both a single-episode link and one file out of
+    a batch link: dub/subtitle-check the delivered file, relay it into the
+    storage channel, and upsert the episode."""
+    delivered_text = file_message.message or ""
+    if is_subtitle_only(delivered_text):
+        logger.info(
+            "discarding linked episode %s via @%s - delivered file is subtitle-only, not dubbed",
+            episode_number, bot_username,
+        )
+        await api.create_import_log(
+            channel["id"], message.id, "skipped",
+            detail=f"linked episode {episode_number} via @{bot_username} was subtitle-only, discarded",
+        )
+        return
+
+    storage_message_id = await relay_to_storage(client, file_message)
+    episode = await api.upsert_episode(
+        {
+            "anime_id": anime_id,
+            "episode_number": episode_number,
+            "quality": quality,
+            "storage_chat_id": Config.STORAGE_CHANNEL_ID,
+            "storage_message_id": storage_message_id,
+            "source_channel_id": channel["id"],
+            # Synthetic but stable/unique per episode so re-processing this
+            # same announcement updates rather than duplicates.
+            "source_message_id": message.id * 1000 + episode_number,
+        }
+    )
+    await api.create_import_log(
+        channel["id"], message.id, "new",
+        detail=f"linked episode {episode_number} via @{bot_username}",
+        anime_id=anime_id, episode_id=episode["id"],
+    )
+    logger.info("fetched linked episode %s for anime %s via @%s", episode_number, anime_id, bot_username)
+
+
 async def fetch_linked_episodes(client: TelegramClient, api: ApiClient, channel: dict, message, anime_id: int, quality: str):
     """Some channels hide each episode behind a link into a separate file
     delivery bot instead of attaching the video to the post (see
-    deep_link_fetcher.py). Best-effort: fetch each numbered one and store
-    it like a normal episode."""
+    deep_link_fetcher.py). Handles two shapes: a link naming one specific
+    episode, and a single "batch" link (e.g. "E01_E20") whose one /start
+    streams back many files at once - each identified by its own filename."""
     all_links = extract_episode_deep_links(message)
-    links = [link for link in all_links if link["episode_number"] is not None]
     if not all_links:
         logger.info("message %s: no delivery-bot deep links found (poster/metadata-only post)", message.id)
         return
-    if not links:
-        logger.info(
-            "message %s: found %d deep link(s) but couldn't read an episode number from any of them: %s",
-            message.id, len(all_links), [l["label"] for l in all_links],
-        )
-        return
-    logger.info("message %s: found %d linked episode(s), fetching...", message.id, len(links))
 
-    for link in links:
+    single_links = [link for link in all_links if link["episode_number"] is not None]
+    batch_links = [link for link in all_links if link["episode_number"] is None and link.get("is_batch")]
+    unresolved = [link for link in all_links if link["episode_number"] is None and not link.get("is_batch")]
+    if unresolved:
+        logger.info(
+            "message %s: found %d deep link(s) with no readable episode number: %s",
+            message.id, len(unresolved), [l["label"] for l in unresolved],
+        )
+    if not single_links and not batch_links:
+        return
+    logger.info(
+        "message %s: found %d single + %d batch linked episode(s), fetching...",
+        message.id, len(single_links), len(batch_links),
+    )
+
+    for link in single_links:
         try:
             # If the channel already labels this exact episode's link as
             # subtitle-only (e.g. "Eposide_1 - زیرنویس فارسی"), skip it
@@ -198,43 +253,50 @@ async def fetch_linked_episodes(client: TelegramClient, api: ApiClient, channel:
                 )
                 continue
 
-            # The delivery bot's own caption on the file it sends is often
-            # the only place that reveals dub vs. subtitle - the original
-            # channel post may not have said either way.
-            delivered_text = file_message.message or ""
-            if is_subtitle_only(delivered_text):
-                logger.info(
-                    "discarding linked episode %s via @%s - delivered file is subtitle-only, not dubbed",
-                    link["episode_number"], link["bot_username"],
-                )
+            await _store_linked_episode(
+                api, client, channel, message, anime_id, quality,
+                link["episode_number"], link["bot_username"], file_message,
+            )
+        except Exception:
+            logger.exception("failed to fetch linked episode %s via @%s", link.get("episode_number"), link.get("bot_username"))
+
+        await asyncio.sleep(BETWEEN_LINKED_EPISODES_DELAY)
+
+    for link in batch_links:
+        try:
+            if is_subtitle_only(link.get("label", "")):
                 await api.create_import_log(
                     channel["id"], message.id, "skipped",
-                    detail=f"linked episode {link['episode_number']} via @{link['bot_username']} was subtitle-only, discarded",
+                    detail=f"batch link '{link['label']}' labeled subtitle-only, not fetched",
                 )
                 continue
 
-            storage_message_id = await relay_to_storage(client, file_message)
-            episode = await api.upsert_episode(
-                {
-                    "anime_id": anime_id,
-                    "episode_number": link["episode_number"],
-                    "quality": quality,
-                    "storage_chat_id": Config.STORAGE_CHANNEL_ID,
-                    "storage_message_id": storage_message_id,
-                    "source_channel_id": channel["id"],
-                    # Synthetic but stable/unique per episode so re-processing
-                    # this same announcement updates rather than duplicates.
-                    "source_message_id": message.id * 1000 + link["episode_number"],
-                }
+            file_messages = await fetch_batch_files(client, link["bot_username"], link["start_param"])
+            if not file_messages:
+                await api.create_import_log(
+                    channel["id"], message.id, "skipped",
+                    detail=f"batch link '{link['label']}' via @{link['bot_username']} returned no files",
+                )
+                continue
+
+            logger.info(
+                "message %s: batch link '%s' via @%s returned %d file(s)",
+                message.id, link["label"], link["bot_username"], len(file_messages),
             )
-            await api.create_import_log(
-                channel["id"], message.id, "new",
-                detail=f"linked episode {link['episode_number']} via @{link['bot_username']}",
-                anime_id=anime_id, episode_id=episode["id"],
-            )
-            logger.info("fetched linked episode %s for anime %s via @%s", link["episode_number"], anime_id, link["bot_username"])
+            for file_message in file_messages:
+                episode_number = episode_number_from_delivered(file_message)
+                if episode_number is None:
+                    logger.info(
+                        "batch file from @%s had no recognizable episode number, skipping: %s",
+                        link["bot_username"], getattr(file_message.file, "name", None) or file_message.message,
+                    )
+                    continue
+                await _store_linked_episode(
+                    api, client, channel, message, anime_id, quality,
+                    episode_number, link["bot_username"], file_message,
+                )
         except Exception:
-            logger.exception("failed to fetch linked episode %s via @%s", link.get("episode_number"), link.get("bot_username"))
+            logger.exception("failed to fetch batch link '%s' via @%s", link.get("label"), link.get("bot_username"))
 
         await asyncio.sleep(BETWEEN_LINKED_EPISODES_DELAY)
 
