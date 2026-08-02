@@ -37,8 +37,20 @@ DEEP_LINK_RE = re.compile(
 EPISODE_NUMBER_RE = re.compile(r"(\d{1,4})")
 SPONSOR_CHANNEL_RE = re.compile(r"t\.me/([A-Za-z0-9_]{5,32})/?$", re.IGNORECASE)
 
+# Many delivery bots don't send the file right after /start - they show an
+# anime "menu" (Watch / Episodes / etc. as callback buttons, not links)
+# that has to be navigated one or two levels deep before a specific
+# episode's button finally sends the file. These are the generic labels
+# (Tajik/Farsi/Russian/English) used to recognize a "go deeper" button when
+# none of the buttons name our exact episode number yet.
+MENU_KEYWORDS = (
+    "тамошо", "қисм", "кисм", "epizod", "episode", "epi",
+    "تماشو", "قسمت", "دانلود", "download", "watch", "part",
+)
+
 RESPONSE_TIMEOUT = 25  # seconds to wait for the delivery bot to reply
 MAX_JOIN_RETRIES = 2
+MAX_MENU_HOPS = 4  # how many button-clicks deep to follow before giving up
 
 
 def _parse_deep_link(url: str):
@@ -142,25 +154,64 @@ def _sponsor_channels_requested(response) -> list[str]:
     return channels
 
 
-async def _attempt(client: TelegramClient, bot_entity, start_param: str):
+def _pick_menu_button(buttons, episode_number: int | None):
+    """Which callback button to click next when a reply has no file yet:
+    prefer one that names our exact episode number (e.g. "Қисми 3
+    [720p]"), else fall back to a generic "watch/episodes" navigation
+    button to drill one level deeper. URL buttons are skipped here - those
+    are handled separately as a sponsor-channel gate."""
+    generic = None
+    for row in buttons or []:
+        for button in row:
+            if button.url:
+                continue
+            text = (button.text or "").strip()
+            if not text:
+                continue
+            if episode_number is not None:
+                m = EPISODE_NUMBER_RE.search(text)
+                if m and int(m.group(1)) == episode_number:
+                    return button
+            if generic is None and any(k in text.lower() for k in MENU_KEYWORDS):
+                generic = button
+    return generic
+
+
+async def _attempt(client: TelegramClient, bot_entity, start_param: str, episode_number: int | None):
     async with client.conversation(bot_entity, timeout=RESPONSE_TIMEOUT) as conv:
         await conv.send_message(f"/start {start_param}")
-        while True:
-            resp = await conv.get_response()
+        resp = await conv.get_response()
+
+        for _ in range(MAX_MENU_HOPS):
             if resp.video or resp.document:
                 return "file", resp
+
             sponsor_channels = _sponsor_channels_requested(resp)
             if sponsor_channels:
                 return "join", sponsor_channels
-            # Some bots send a "please wait"/"processing" text first - keep
-            # waiting for the real reply instead of giving up on it.
+
+            next_button = _pick_menu_button(resp.buttons, episode_number)
+            if not next_button:
+                button_labels = [[b.text for b in row] for row in (resp.buttons or [])]
+                logger.info("no file or navigable button in reply (buttons seen: %s)", button_labels)
+                return "stuck", None
+
+            await next_button.click()
+            resp = await conv.get_response()
+
+        logger.info("gave up after %d menu hops without finding the file", MAX_MENU_HOPS)
+        return "stuck", None
 
 
-async def fetch_episode_file(client: TelegramClient, bot_username: str, start_param: str):
+async def fetch_episode_file(client: TelegramClient, bot_username: str, start_param: str, episode_number: int | None = None):
     """Simulates tapping a t.me/<bot>?start=<param> deep link and returns
-    the video/document message the bot sends back, joining any sponsor
-    channel(s) it demands along the way. Returns None on timeout or if it
-    keeps demanding channels we already joined (broken/private channel)."""
+    the video/document message the bot eventually sends back. Handles the
+    two common shapes: an immediate file, or a "menu" (Watch -> episode
+    list -> specific episode, as callback buttons) that has to be clicked
+    through first - matching episode_number against button labels once
+    it's known which episode we're after. Also joins any sponsor channel
+    a bot demands along the way. Returns None on timeout, if stuck with no
+    usable button, or if it keeps demanding channels already joined."""
     try:
         bot_entity = await client.get_entity(bot_username)
     except Exception:
@@ -170,13 +221,15 @@ async def fetch_episode_file(client: TelegramClient, bot_username: str, start_pa
     joined: set[str] = set()
     for _ in range(MAX_JOIN_RETRIES + 1):
         try:
-            kind, payload = await _attempt(client, bot_entity, start_param)
+            kind, payload = await _attempt(client, bot_entity, start_param, episode_number)
         except TimeoutError:
             logger.warning("@%s: no file for start=%s within %ss", bot_username, start_param, RESPONSE_TIMEOUT)
             return None
 
         if kind == "file":
             return payload
+        if kind == "stuck":
+            return None
 
         new_channels = [c for c in payload if c not in joined]
         if not new_channels:

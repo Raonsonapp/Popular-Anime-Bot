@@ -180,7 +180,9 @@ async def fetch_linked_episodes(client: TelegramClient, api: ApiClient, channel:
                 )
                 continue
 
-            file_message = await fetch_episode_file(client, link["bot_username"], link["start_param"])
+            file_message = await fetch_episode_file(
+                client, link["bot_username"], link["start_param"], link["episode_number"]
+            )
             if not file_message:
                 await api.create_import_log(
                     channel["id"], message.id, "skipped",
