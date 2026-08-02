@@ -11,7 +11,7 @@ import (
 // NewRouter wires public (bot-facing) and internal (listener/scheduler/admin-facing)
 // routes. Internal routes require the shared X-Internal-Key header so a stolen
 // bot token alone can't be used to mutate the catalog.
-func NewRouter(h *Handler, internalAPIKey string) http.Handler {
+func NewRouter(h *Handler, internalAPIKey string) chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)

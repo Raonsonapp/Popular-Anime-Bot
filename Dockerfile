@@ -1,12 +1,13 @@
-# Root Dockerfile for deploying the core API as a single Render (or any
-# generic Docker-PaaS) web service. Render defaults to looking for this
-# file at the repo root, so it needs to exist here even though the other
-# services keep their own Dockerfiles under services/<name>/.
+# Root Dockerfile for deploying the core API (and, optionally, the
+# Telegram bot embedded in the same process - see BOT_TOKEN in
+# docs/RENDER.md) as a single Render (or any generic Docker-PaaS) web
+# service. Render defaults to looking for this file at the repo root, so
+# it needs to exist here even though the other services keep their own
+# Dockerfiles under services/<name>/.
 #
-# The bot, scheduler and mtproto-listener services are NOT started by this
-# image - they're separate long-running processes best run elsewhere (a
-# VPS via docker-compose, or as additional Render services later). See
-# docs/RENDER.md.
+# scheduler and mtproto-listener are NOT started by this image - they're
+# separate long-running processes that aren't request-driven, best run on
+# a VPS via docker-compose. See docs/DEPLOYMENT.md and docs/RENDER.md.
 FROM golang:1.25-alpine AS build
 WORKDIR /src
 COPY services/api/go.mod services/api/go.sum ./

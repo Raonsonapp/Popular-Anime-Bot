@@ -10,6 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
+	botapiclient "popular-anime-bot/api/internal/bot/apiclient"
+	bothandlers "popular-anime-bot/api/internal/bot/handlers"
 	"popular-anime-bot/api/internal/config"
 	httpDelivery "popular-anime-bot/api/internal/delivery/http"
 	"popular-anime-bot/api/internal/repository/postgres"
@@ -49,6 +53,32 @@ func main() {
 	handler := httpDelivery.NewHandler(catalog, ingest, users, publish, sourceChannelRepo, logger)
 	router := httpDelivery.NewRouter(handler, cfg.InternalAPIKey)
 
+	// Optionally embed the Telegram bot in this same process/port - lets a
+	// single free Render Web Service run both. See docs/RENDER.md.
+	var runBotPolling func()
+	if cfg.BotToken != "" {
+		tgAPI, err := tgbotapi.NewBotAPI(cfg.BotToken)
+		if err != nil {
+			logger.Error("create bot api", "error", err)
+			os.Exit(1)
+		}
+		logger.Info("bot authorized", "username", tgAPI.Self.UserName)
+
+		botClient := botapiclient.New("http://localhost:"+cfg.Port, cfg.InternalAPIKey)
+		bot := bothandlers.New(tgAPI, botClient, logger)
+
+		if cfg.WebhookURL != "" {
+			if err := bot.SetWebhook(cfg.WebhookURL, cfg.WebhookSecret); err != nil {
+				logger.Error("set webhook", "error", err)
+				os.Exit(1)
+			}
+			router.Post(bothandlers.WebhookPath, bot.WebhookHandler(ctx, cfg.WebhookSecret))
+			logger.Info("bot webhook mounted", "path", bothandlers.WebhookPath, "webhook_url", cfg.WebhookURL+bothandlers.WebhookPath)
+		} else {
+			runBotPolling = func() { bot.Run(ctx) }
+		}
+	}
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           router,
@@ -62,6 +92,10 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+
+	if runBotPolling != nil {
+		go runBotPolling()
+	}
 
 	<-ctx.Done()
 	logger.Info("shutting down")
