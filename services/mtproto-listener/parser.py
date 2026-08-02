@@ -38,6 +38,18 @@ ADULT_CONTENT_MARKERS = (
 SUBTITLE_MARKERS = ("زیرنویس", "زیر نویس", "زیرنوشت", "hardsub", "softsub", "subtitle", "sub:")
 DUB_MARKERS = ("دوبله", "دوبلاژ", "dubbed", "dub:")
 
+# Telegram itself injects this placeholder text (in the viewer's own
+# client, not the actual message) when a message was taken down over a
+# copyright complaint - there's no real content left in it at all. Without
+# this check, that boilerplate gets parsed as if it were the anime's
+# title, importing junk "anime" entries for messages that no longer
+# contain anything.
+REMOVED_MESSAGE_MARKERS = (
+    "couldn't be displayed on your device due to copyright",
+    "message was deleted",
+    "this message is unavailable",
+)
+
 QUALITY_RE = re.compile(r"\b(480p|720p|1080p|2160p|4k)\b", re.IGNORECASE)
 EPISODE_RE = re.compile(
     r"(?:episode|epi?sode|\bep\b|قسمت|серия|эпизод)\s*[\-:#]?\s*(\d{1,4})", re.IGNORECASE
@@ -81,6 +93,13 @@ def is_adult_content(parsed: ParsedPost, raw_text: str) -> bool:
     raw caption (covers warning lines the structured fields don't capture)."""
     haystack = " ".join([parsed.title, " ".join(parsed.genres), raw_text or ""]).lower()
     return any(marker in haystack for marker in ADULT_CONTENT_MARKERS)
+
+
+def is_removed_placeholder(raw_text: str) -> bool:
+    """True if this is Telegram's own copyright-takedown placeholder text,
+    not real post content - there's nothing to import here."""
+    haystack = (raw_text or "").lower()
+    return any(marker in haystack for marker in REMOVED_MESSAGE_MARKERS)
 
 
 def is_subtitle_only(raw_text: str) -> bool:

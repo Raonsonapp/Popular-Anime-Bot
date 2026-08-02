@@ -13,7 +13,7 @@ from telethon.tl.types import DocumentAttributeVideo
 from api_client import ApiClient
 from config import Config
 from deep_link_fetcher import extract_episode_deep_links, fetch_episode_file, relay_to_storage
-from parser import is_adult_content, is_subtitle_only, parse_post
+from parser import is_adult_content, is_removed_placeholder, is_subtitle_only, parse_post
 from translator import translate_to_persian
 
 BETWEEN_LINKED_EPISODES_DELAY = 3  # be gentle - each one drives a second bot
@@ -48,6 +48,10 @@ async def resolve_storage_message_id(client: TelegramClient, channel: dict, mess
 
 async def handle_episode(client: TelegramClient, api: ApiClient, channel: dict, message):
     text = message.message or ""
+    if is_removed_placeholder(text):
+        await api.create_import_log(channel["id"], message.id, "skipped", detail="message removed by Telegram (copyright), nothing to import")
+        return
+
     parsed = parse_post(text)
     if not parsed.title:
         logger.warning("could not extract a title, skipping message %s", message.id)
@@ -99,6 +103,10 @@ async def handle_episode(client: TelegramClient, api: ApiClient, channel: dict, 
 
 async def handle_announcement(client: TelegramClient, api: ApiClient, channel: dict, message):
     text = message.message or ""
+    if is_removed_placeholder(text):
+        await api.create_import_log(channel["id"], message.id, "skipped", detail="message removed by Telegram (copyright), nothing to import")
+        return
+
     parsed = parse_post(text)
     if not parsed.title:
         return
