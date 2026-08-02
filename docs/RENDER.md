@@ -148,12 +148,13 @@ https://popular-anime-bot.onrender.com/telegram-login/backfill?key=<INTERNAL_API
 ```
 
 `limit` is the max number of messages scanned per registered channel
-(default 300 if omitted) - raise it for channels with more history, at the
-cost of taking longer. This runs in the background; the page responds
-immediately, and progress/results show up in the Render **Logs** tab
-(look for `backfilling ...` / `backfill finished: ...` lines). Safe to
-re-run - already-imported episodes are skipped via the same dedup logic
-used for live messages.
+(default 300 if omitted) - raise it, or set `limit=all` to walk a
+channel's entire history with no cap (can take a long time for
+channels with thousands of posts, but runs in the background regardless).
+The page responds immediately either way, and progress/results show up in
+the Render **Logs** tab (look for `backfilling ...` / `backfill
+finished: ...` lines). Safe to re-run - already-imported episodes are
+skipped via the same dedup logic used for live messages.
 
 ## 8. Point the scheduler at it (if you run one)
 

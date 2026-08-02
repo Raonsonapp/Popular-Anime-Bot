@@ -30,10 +30,15 @@ def make_backfill_handler(client: TelegramClient):
     async def handle_backfill(request):
         if not check_key(request):
             return web.Response(status=403, text="Invalid or missing ?key=")
-        try:
-            limit = int(request.query.get("limit", "300"))
-        except ValueError:
-            limit = 300
+
+        raw_limit = request.query.get("limit", "300").strip().lower()
+        if raw_limit in ("0", "all", "none", "unlimited"):
+            limit = None  # Telethon's iter_messages(limit=None) walks the entire history.
+        else:
+            try:
+                limit = int(raw_limit)
+            except ValueError:
+                limit = 300
 
         async def run():
             api = ApiClient(Config.API_BASE_URL, Config.INTERNAL_API_KEY)
@@ -44,9 +49,11 @@ def make_backfill_handler(client: TelegramClient):
                 await api.close()
 
         asyncio.create_task(run())
+        limit_desc = "the entire history" if limit is None else f"up to {limit} messages"
         return web.Response(
-            text=f"Backfill started (up to {limit} messages per channel). "
-            "This runs in the background - check the Render Logs tab for progress."
+            text=f"Backfill started ({limit_desc} per channel). This can take a while for "
+            "channels with a lot of history - it runs in the background regardless. "
+            "Check the Render Logs tab for progress."
         )
 
     return handle_backfill

@@ -16,7 +16,7 @@ logger = logging.getLogger("backfill")
 DEFAULT_LIMIT = 300
 
 
-async def backfill_channel(client: TelegramClient, api: ApiClient, channel: dict, limit: int = DEFAULT_LIMIT) -> int:
+async def backfill_channel(client: TelegramClient, api: ApiClient, channel: dict, limit: int | None = DEFAULT_LIMIT) -> int:
     """Walks a channel's message history (oldest of the fetched batch
     first) and imports anything that looks like an episode or anime
     announcement. Returns how many messages were successfully processed."""
@@ -38,7 +38,7 @@ async def backfill_channel(client: TelegramClient, api: ApiClient, channel: dict
     return count
 
 
-async def backfill_all(client: TelegramClient, api: ApiClient, limit: int = DEFAULT_LIMIT) -> dict[str, str]:
+async def backfill_all(client: TelegramClient, api: ApiClient, limit: int | None = DEFAULT_LIMIT) -> dict[str, str]:
     channels = await api.list_source_channels(active_only=True)
     results = {}
     for channel in channels:
