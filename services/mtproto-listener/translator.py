@@ -11,7 +11,7 @@ def translate_to_persian(text: str, source_language: str, enabled: bool = True) 
     if not enabled or not text or not text.strip():
         return text
 
-    if source_language == "fa":
+    if source_language in ("fa", "tg"):
         return text
 
     lang_map = {"ru": "russian", "en": "english"}

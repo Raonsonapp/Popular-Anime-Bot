@@ -9,9 +9,13 @@ Service, listening on one port:
 - The bot runs in **webhook mode**: Telegram pushes updates to us over
   HTTPS instead of us long-polling, so it fits the same HTTP server the
   API already runs (mounted at `/webhook`).
-- `scheduler` and `mtproto-listener` still need to run somewhere else (a
-  VPS via `docker compose`, see `docs/DEPLOYMENT.md`) - they're not
-  request-driven, so there's no free way to run them on Render.
+- `mtproto-listener` can also run as its own free Render Web Service - it
+  binds a tiny `/healthz` endpoint to `$PORT` just to satisfy Render, while
+  the actual work (watching Telegram) happens in the background. See
+  section 6 below.
+- `scheduler` still needs to run somewhere else (a VPS via
+  `docker compose`, see `docs/DEPLOYMENT.md`) - it's cron-driven, not
+  request-driven, so there's no free way to run it on Render.
 
 (The standalone `services/bot` also still works unchanged for VPS/
 docker-compose setups that prefer long-polling and a separate process -
@@ -79,13 +83,78 @@ confirm it registered.
 
 ## 5. Point the other services at it
 
-Wherever you run `scheduler` and `mtproto-listener` (see
-`docs/DEPLOYMENT.md`), set:
+Wherever you run `scheduler` (see `docs/DEPLOYMENT.md`), set:
 
 ```
 API_BASE_URL=https://popular-anime-bot.onrender.com
 INTERNAL_API_KEY=<the same value you set on the Render service>
 ```
+
+## 6. Deploy the MTProto listener as a third Render Web Service
+
+The simplest setup if you don't have a channel you already have scraping
+permission for: create your own **private channel**, post anime videos
+into it yourself (caption format: title on the first line, then optional
+`Episode N`, quality tag, `Genre: ...` line - see `parser.py`), add your
+bot as **admin** there, and register that same channel as both the
+source and the storage channel. The listener detects this and skips the
+forward-to-storage step entirely - it just indexes what you post, in
+place.
+
+Create a **new** Web Service on Render, same repo/branch:
+
+- **Root Directory**: `services/mtproto-listener`
+- **Dockerfile Path**: `Dockerfile`
+
+Environment variables:
+
+| Key                  | Value                                                                 |
+| -------------------- | ---------------------------------------------------------------------- |
+| `TELEGRAM_API_ID`    | From https://my.telegram.org.                                         |
+| `TELEGRAM_API_HASH`  | From https://my.telegram.org.                                         |
+| `SESSION_NAME`       | `/data/userbot.session` (see the disk warning below).                 |
+| `STORAGE_CHANNEL_ID` | Your channel's numeric id, looks like `-100xxxxxxxxxx` (forward any message from it to @userinfobot to find it). |
+| `API_BASE_URL`       | `https://popular-anime-bot.onrender.com`                              |
+| `INTERNAL_API_KEY`   | The same value set on the main service.                               |
+
+Don't set `PORT` manually - Render injects it, and the listener starts a
+health endpoint on it automatically.
+
+**One-time login**: Render's free Web Services include a **Shell** tab.
+After the first deploy, open it and run:
+
+```bash
+python login.py
+```
+
+Enter your phone number, the code Telegram texts you, and your 2FA
+password if set. This writes the session file so the main process can
+reconnect without further interaction.
+
+**Register the channel** as a source (do this once, from any machine):
+
+```bash
+curl -X POST https://popular-anime-bot.onrender.com/api/v1/source-channels \
+  -H "X-Internal-Key: <INTERNAL_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "telegram_channel_id": -100xxxxxxxxxx,
+        "title": "My anime channel",
+        "source_language": "fa"
+      }'
+```
+
+Use `"source_language": "fa"` (or `"tg"`) if you're posting content
+already in Persian/Tajik yourself - that skips the RU/EN→FA machine
+translation step entirely, which is both faster and more accurate for
+content you wrote yourself.
+
+⚠️ **Disk persistence warning**: Render's free tier has no persistent
+disk. The session file written by `login.py` can be wiped on the next
+deploy or restart, requiring you to log in again via the Shell. If this
+becomes annoying, either add a paid persistent disk to this service, or
+run the listener on a VPS instead (see `docs/DEPLOYMENT.md`) where the
+session survives normally.
 
 ## Notes / limitations
 

@@ -35,3 +35,8 @@ class Config:
     CHANNEL_REFRESH_SECONDS = _int("CHANNEL_REFRESH_SECONDS", 60)
     AUTO_PUBLISH = _bool("AUTO_PUBLISH", True)
     TRANSLATE_ENABLED = _bool("TRANSLATE_ENABLED", True)
+
+    # Only used when deployed as a PaaS "web service" (e.g. Render's free
+    # tier) that requires something listening on $PORT. Ignored for
+    # docker-compose/VPS deployments.
+    PORT = os.getenv("PORT", "")

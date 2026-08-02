@@ -39,6 +39,21 @@ async def refresh_channels(api: ApiClient):
         await asyncio.sleep(Config.CHANNEL_REFRESH_SECONDS)
 
 
+async def resolve_storage_message_id(client: TelegramClient, channel: dict, message) -> int:
+    """Returns the message id in the storage channel that the bot will later
+    copyMessage from. If the source channel *is* the storage channel (the
+    simple single-channel setup: you post directly into your own private
+    channel and the bot is admin there too), no forward is needed - the
+    message is already exactly where it needs to be."""
+    if channel["telegram_channel_id"] == Config.STORAGE_CHANNEL_ID:
+        return message.id
+
+    forwarded = await client.forward_messages(Config.STORAGE_CHANNEL_ID, message)
+    if isinstance(forwarded, list):
+        forwarded = forwarded[0]
+    return forwarded.id
+
+
 async def handle_episode(client: TelegramClient, api: ApiClient, channel: dict, message):
     text = message.message or ""
     parsed = parse_post(text)
@@ -47,9 +62,7 @@ async def handle_episode(client: TelegramClient, api: ApiClient, channel: dict, 
         await api.create_import_log(channel["id"], message.id, "skipped", detail="no title extracted")
         return
 
-    forwarded = await client.forward_messages(Config.STORAGE_CHANNEL_ID, message)
-    if isinstance(forwarded, list):
-        forwarded = forwarded[0]
+    storage_message_id = await resolve_storage_message_id(client, channel, message)
 
     title_persian = translate_to_persian(parsed.title, channel["source_language"], Config.TRANSLATE_ENABLED)
 
@@ -69,7 +82,7 @@ async def handle_episode(client: TelegramClient, api: ApiClient, channel: dict, 
             "episode_number": parsed.episode_number or 0,
             "quality": parsed.quality,
             "storage_chat_id": Config.STORAGE_CHANNEL_ID,
-            "storage_message_id": forwarded.id,
+            "storage_message_id": storage_message_id,
             "source_channel_id": channel["id"],
             "source_message_id": message.id,
         }
@@ -91,11 +104,8 @@ async def handle_announcement(client: TelegramClient, api: ApiClient, channel: d
     poster_chat_id = None
     poster_message_id = None
     if message.photo:
-        forwarded = await client.forward_messages(Config.STORAGE_CHANNEL_ID, message)
-        if isinstance(forwarded, list):
-            forwarded = forwarded[0]
         poster_chat_id = Config.STORAGE_CHANNEL_ID
-        poster_message_id = forwarded.id
+        poster_message_id = await resolve_storage_message_id(client, channel, message)
 
     title_persian = translate_to_persian(parsed.title, channel["source_language"], Config.TRANSLATE_ENABLED)
     synopsis_persian = translate_to_persian(parsed.synopsis, channel["source_language"], Config.TRANSLATE_ENABLED)
@@ -168,6 +178,21 @@ def build_handlers(client: TelegramClient, api: ApiClient):
                 logger.exception("failed to mark message %s deleted", message_id)
 
 
+async def start_health_server(port: str):
+    """Minimal HTTP server so this can run as a Render (or similar PaaS)
+    free-tier "web service", which requires something bound to $PORT.
+    Not used for docker-compose/VPS deployments."""
+    from aiohttp import web
+
+    app = web.Application()
+    app.router.add_get("/healthz", lambda request: web.Response(text="ok"))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", int(port))
+    await site.start()
+    logger.info("health server listening on port %s", port)
+
+
 async def main():
     if not Config.API_ID or not Config.API_HASH:
         raise SystemExit("TELEGRAM_API_ID and TELEGRAM_API_HASH are required")
@@ -178,6 +203,9 @@ async def main():
     client = TelegramClient(Config.SESSION_NAME, Config.API_ID, Config.API_HASH)
 
     build_handlers(client, api)
+
+    if Config.PORT:
+        await start_health_server(Config.PORT)
 
     await client.start()
     logger.info("MTProto listener connected")
