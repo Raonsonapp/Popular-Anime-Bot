@@ -34,8 +34,21 @@ DEEP_LINK_RE = re.compile(
     r"|tg://resolve\?domain=(?P<user2>[A-Za-z0-9_]{5,32})&start=(?P<param2>[A-Za-z0-9_\-]+)",
     re.IGNORECASE,
 )
-EPISODE_NUMBER_RE = re.compile(r"(\d{1,4})")
+# Anchored to an actual episode keyword - NOT just "any number in the
+# label". A bare \d+ match would also fire on a "Session_1"/"فصل 1" (season/
+# batch download) link, tagging it as "episode 1" too and corrupting the
+# real episode 1 via the same anime_id+episode_number upsert conflict.
+# "eposide" is a real, repeatedly observed misspelling of "episode" in the
+# wild (not a typo on our end) - some channels only ever spell it that way.
+EPISODE_LABEL_RE = re.compile(
+    r"(?:episode|eposide|epi?sode|\bep\b|قسمت|қисм|кисм)\s*[_\-:#]?\s*(\d{1,4})", re.IGNORECASE
+)
 SPONSOR_CHANNEL_RE = re.compile(r"t\.me/([A-Za-z0-9_]{5,32})/?$", re.IGNORECASE)
+
+
+def _episode_number_from_label(label: str) -> int | None:
+    m = EPISODE_LABEL_RE.search(label or "")
+    return int(m.group(1)) if m else None
 
 # Many delivery bots don't send the file right after /start - they show an
 # anime "menu" (Watch / Episodes / etc. as callback buttons, not links)
@@ -103,13 +116,13 @@ def extract_episode_deep_links(message) -> list[dict]:
         if (bot_username, start_param) in seen:
             continue
         seen.add((bot_username, start_param))
-        ep_match = EPISODE_NUMBER_RE.search(entity_text)
+        label = _line_at(full_text, entity.offset)
         links.append(
             {
-                "episode_number": int(ep_match.group(1)) if ep_match else None,
+                "episode_number": _episode_number_from_label(label) or _episode_number_from_label(entity_text),
                 "bot_username": bot_username,
                 "start_param": start_param,
-                "label": _line_at(full_text, entity.offset),
+                "label": label,
             }
         )
 
@@ -124,10 +137,9 @@ def extract_episode_deep_links(message) -> list[dict]:
             if (bot_username, start_param) in seen:
                 continue
             seen.add((bot_username, start_param))
-            ep_match = EPISODE_NUMBER_RE.search(button.text or "")
             links.append(
                 {
-                    "episode_number": int(ep_match.group(1)) if ep_match else None,
+                    "episode_number": _episode_number_from_label(button.text),
                     "bot_username": bot_username,
                     "start_param": start_param,
                     "label": button.text or "",
@@ -169,8 +181,7 @@ def _pick_menu_button(buttons, episode_number: int | None):
             if not text:
                 continue
             if episode_number is not None:
-                m = EPISODE_NUMBER_RE.search(text)
-                if m and int(m.group(1)) == episode_number:
+                if re.search(rf"\b0*{episode_number}\b", text):
                     return button
             if generic is None and any(k in text.lower() for k in MENU_KEYWORDS):
                 generic = button
