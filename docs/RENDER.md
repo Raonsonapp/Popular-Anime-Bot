@@ -136,7 +136,26 @@ curl -X POST https://popular-anime-bot.onrender.com/api/v1/source-channels \
 a member/have joined it - the automatic username-resolving + join only
 happens during the `/telegram-login/sign-in` flow above.)
 
-## 7. Point the scheduler at it (if you run one)
+## 7. Importing a channel's existing history (backfill)
+
+By default, only messages posted **after** a channel is registered get
+imported - the login flow above doesn't touch anything already in the
+channel. To also pull in what's already there, open (once the listener is
+running normally, a few seconds after login):
+
+```
+https://popular-anime-bot.onrender.com/telegram-login/backfill?key=<INTERNAL_API_KEY>&limit=300
+```
+
+`limit` is the max number of messages scanned per registered channel
+(default 300 if omitted) - raise it for channels with more history, at the
+cost of taking longer. This runs in the background; the page responds
+immediately, and progress/results show up in the Render **Logs** tab
+(look for `backfilling ...` / `backfill finished: ...` lines). Safe to
+re-run - already-imported episodes are skipped via the same dedup logic
+used for live messages.
+
+## 8. Point the scheduler at it (if you run one)
 
 Wherever you run `scheduler` (see `docs/DEPLOYMENT.md`), set:
 
