@@ -68,6 +68,28 @@ class ApiClient:
             json={"source_channel_id": source_channel_id, "source_message_id": source_message_id},
         )
 
+    async def get_anime(self, anime_id: int) -> Optional[dict]:
+        return await self._request("GET", f"/api/v1/anime/{anime_id}")
+
+    async def list_all_episodes(self, anime_id: int) -> list[dict]:
+        """Walks every page so a delete-cleanup can find every episode's
+        storage location, not just the first page's worth."""
+        episodes = []
+        page = 1
+        while True:
+            result = await self._request(
+                "GET", f"/api/v1/anime/{anime_id}/episodes", params={"page": page, "page_size": 100}
+            )
+            items = (result or {}).get("items") or []
+            episodes.extend(items)
+            if len(items) < 100:
+                break
+            page += 1
+        return episodes
+
+    async def delete_anime(self, anime_id: int):
+        await self._request("DELETE", f"/api/v1/anime/{anime_id}")
+
     async def get_listener_session(self) -> str:
         """Returns the Telethon StringSession saved from a previous login,
         or "" if none has been saved yet."""

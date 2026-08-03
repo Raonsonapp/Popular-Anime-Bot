@@ -238,6 +238,55 @@ def make_register_storage_handler(client: TelegramClient):
     return handle_register_storage
 
 
+def make_delete_anime_handler(client: TelegramClient):
+    async def handle_delete_anime(request):
+        if not check_key(request):
+            return web.Response(status=403, text="Invalid or missing ?key=")
+        if not await client.is_user_authorized():
+            return web.Response(status=400, text="Not logged in yet - complete /telegram-login/ first.")
+
+        raw_id = request.query.get("id", "").strip()
+        if not raw_id.isdigit():
+            return web.Response(status=400, text="Missing or invalid ?id=<anime_id>")
+        anime_id = int(raw_id)
+
+        api = ApiClient(Config.API_BASE_URL, Config.INTERNAL_API_KEY)
+        try:
+            anime = await api.get_anime(anime_id)
+            if not anime:
+                return web.Response(status=404, text=f"No anime with id={anime_id}")
+
+            episodes = await api.list_all_episodes(anime_id)
+
+            by_chat: dict[int, list[int]] = {}
+            for ep in episodes:
+                by_chat.setdefault(ep["storage_chat_id"], []).append(ep["storage_message_id"])
+            poster_chat_id = anime.get("poster_storage_chat_id")
+            poster_message_id = anime.get("poster_storage_message_id")
+            if poster_chat_id and poster_message_id:
+                by_chat.setdefault(poster_chat_id, []).append(poster_message_id)
+
+            deleted_messages = 0
+            for chat_id, message_ids in by_chat.items():
+                try:
+                    await client.delete_messages(chat_id, message_ids)
+                    deleted_messages += len(message_ids)
+                except Exception:
+                    logger.exception("failed to delete %d message(s) from chat %s", len(message_ids), chat_id)
+
+            await api.delete_anime(anime_id)
+        finally:
+            await api.close()
+
+        title = anime.get("title_persian") or anime.get("title_original") or str(anime_id)
+        return web.Response(
+            text=f"✅ Deleted '{title}' (id={anime_id}) from the catalog and removed "
+            f"{deleted_messages} message(s) from the storage channel."
+        )
+
+    return handle_delete_anime
+
+
 async def start_control_server(client: TelegramClient, api: ApiClient, on_authorized):
     """on_authorized is an async callback invoked exactly once, right after
     a fresh web login succeeds, so the caller can start the live listener
@@ -250,6 +299,7 @@ async def start_control_server(client: TelegramClient, api: ApiClient, on_author
     app.router.add_get("/telegram-login/backfill", make_backfill_handler(client))
     app.router.add_get("/telegram-login/status", make_status_handler(client))
     app.router.add_get("/telegram-login/register-storage", make_register_storage_handler(client))
+    app.router.add_get("/telegram-login/delete-anime", make_delete_anime_handler(client))
 
     runner = web.AppRunner(app)
     await runner.setup()

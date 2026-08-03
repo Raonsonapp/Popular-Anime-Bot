@@ -46,6 +46,7 @@ func NewRouter(h *Handler, internalAPIKey string) chi.Router {
 			r.Use(internalAuth(internalAPIKey))
 
 			r.Post("/anime", h.UpsertAnime)
+			r.Delete("/anime/{id}", h.DeleteAnime)
 			r.Post("/episodes", h.UpsertEpisode)
 			r.Delete("/episodes", h.DeleteEpisodeBySource)
 			r.Post("/import-logs", h.CreateImportLog)

@@ -163,3 +163,16 @@ func (h *Handler) SaveListenerSession(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusNoContent, nil)
 }
+
+func (h *Handler) DeleteAnime(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid anime id")
+		return
+	}
+	if err := h.Ingest.DeleteAnime(r.Context(), id); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete anime")
+		return
+	}
+	writeJSON(w, http.StatusNoContent, nil)
+}

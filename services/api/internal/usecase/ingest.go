@@ -236,6 +236,10 @@ func (s *IngestService) MarkEpisodeDeleted(ctx context.Context, sourceChannelID,
 	return s.Episode.SoftDeleteBySource(ctx, sourceChannelID, sourceMessageID)
 }
 
+func (s *IngestService) DeleteAnime(ctx context.Context, animeID int64) error {
+	return s.Anime.SoftDelete(ctx, animeID)
+}
+
 func (s *IngestService) LogImport(ctx context.Context, sourceChannelID *int64, telegramMessageID int64, action string, animeID, episodeID *int64, detail string, rawPayload []byte) {
 	_ = s.ImportLog.Create(ctx, sourceChannelID, telegramMessageID, action, animeID, episodeID, detail, rawPayload)
 }
