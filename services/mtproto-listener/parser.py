@@ -35,13 +35,18 @@ ADULT_CONTENT_MARKERS = (
 # The user only wants Persian-DUBBED anime (audio track), not
 # subtitled-only releases. Some posts self-label which one they are (e.g.
 # "زیرنویس فارسی چسبیده" - hardsubbed Persian subtitle, no dub at all).
-SUBTITLE_MARKERS = ("زیرنویس", "زیر نویس", "زیرنوشت", "hardsub", "softsub", "subtitle", "sub:")
+SUBTITLE_MARKERS = (
+    "زیرنویس", "زیر نویس", "زیرنوشت", "hardsub", "softsub", "subtitle", "sub:",
+    "هاردساب", "هارد ساب", "سافت‌ساب", "سافت ساب",  # Persian-script transliterations of hardsub/softsub
+)
 DUB_MARKERS = ("دوبله", "دوبلاژ", "dubbed", "dub:")
 # "بدون زیرنویس" = "without subtitles" - a post saying this is boasting
 # it's PURE dub with no subtitles at all, so a plain substring match on
 # SUBTITLE_MARKERS would otherwise misread this as subtitle-only and wrongly
 # discard genuinely dubbed content.
-NEGATED_SUBTITLE_RE = re.compile(r"(?:بدون|بی|no|without)\s*(?:هیچ\s*)?(?:زیرنویس|زیر\s*نویس|subtitle)", re.IGNORECASE)
+NEGATED_SUBTITLE_RE = re.compile(
+    r"(?:بدون|بی|no|without)\s*(?:هیچ\s*)?(?:زیرنویس|زیر\s*نویس|subtitle|هارد\s*ساب|سافت\s*ساب)", re.IGNORECASE
+)
 
 # Many channels post a yes/no checklist line per property (dub, censorship,
 # etc.) marked with an emoji rather than the word "no"/"without" - e.g. a
