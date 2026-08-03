@@ -215,6 +215,14 @@ async def fetch_linked_episodes(client: TelegramClient, api: ApiClient, channel:
         logger.info("message %s: no delivery-bot deep links found (poster/metadata-only post)", message.id)
         return
 
+    blocked = [link for link in all_links if link["bot_username"].lower() in Config.BLOCKED_DELIVERY_BOTS]
+    for link in blocked:
+        await api.create_import_log(
+            channel["id"], message.id, "skipped",
+            detail=f"@{link['bot_username']} is a blocked delivery bot (known hardsub-only), not fetched",
+        )
+    all_links = [link for link in all_links if link not in blocked]
+
     single_links = [link for link in all_links if link["episode_number"] is not None]
     batch_links = [link for link in all_links if link["episode_number"] is None and link.get("is_batch")]
     unresolved = [link for link in all_links if link["episode_number"] is None and not link.get("is_batch")]

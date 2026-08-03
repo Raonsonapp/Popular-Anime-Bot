@@ -42,3 +42,14 @@ class Config:
     # delivery bot may demand first - so real episodes make it into the
     # catalog instead of poster-only metadata.
     FETCH_LINKED_EPISODES = _bool("FETCH_LINKED_EPISODES", True)
+
+    # Delivery bots (usernames, case-insensitive, no "@") known to only ever
+    # serve hardsubbed/subtitled content - never a Persian dub - regardless
+    # of what any particular post's caption claims. Skipped outright rather
+    # than relying on text detection, which isn't reliable for every bot.
+    # Extend via the env var (comma-separated) without needing a redeploy.
+    BLOCKED_DELIVERY_BOTS = {
+        b.strip().lstrip("@").lower()
+        for b in os.getenv("BLOCKED_DELIVERY_BOTS", "AWHTDL2Bot").split(",")
+        if b.strip()
+    }
