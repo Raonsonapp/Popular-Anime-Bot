@@ -43,6 +43,15 @@ DUB_MARKERS = ("دوبله", "دوبلاژ", "dubbed", "dub:")
 # discard genuinely dubbed content.
 NEGATED_SUBTITLE_RE = re.compile(r"(?:بدون|بی|no|without)\s*(?:هیچ\s*)?(?:زیرنویس|زیر\s*نویس|subtitle)", re.IGNORECASE)
 
+# Many channels post a yes/no checklist line per property (dub, censorship,
+# etc.) marked with an emoji rather than the word "no"/"without" - e.g. a
+# "🚫 دوبله بدون سانسور" line means that dub does NOT apply to this release
+# (compare a "✅" in front of the same phrase on a release that does have
+# it). A plain substring check for "دوبله" can't tell these apart and would
+# wrongly treat the 🚫 case as confirmation of a dub.
+NEGATIVE_MARK_RE = re.compile(r"[🚫❌⛔🚷🔴👎✖]")
+POSITIVE_MARK_RE = re.compile(r"[✅✔☑🟢👍]")
+
 # Telegram itself injects this placeholder text (in the viewer's own
 # client, not the actual message) when a message was taken down over a
 # copyright complaint - there's no real content left in it at all. Without
@@ -107,17 +116,40 @@ def is_removed_placeholder(raw_text: str) -> bool:
     return any(marker in haystack for marker in REMOVED_MESSAGE_MARKERS)
 
 
+def _line_dub_status(line: str) -> str | None:
+    """'has_dub' / 'no_dub' / None (this line says nothing about dubbing),
+    accounting for a "🚫 دوبله ..." checklist-style line meaning that dub
+    does NOT apply - not proof that it does, which a bare word match would
+    otherwise assume."""
+    if not any(marker.lower() in line.lower() for marker in DUB_MARKERS):
+        return None
+    if NEGATIVE_MARK_RE.search(line):
+        return "no_dub"
+    return "has_dub"
+
+
 def is_subtitle_only(raw_text: str) -> bool:
-    """True if the post explicitly labels itself as Persian-subtitled with
-    no mention of a Persian dub - the user wants dubbed audio only, not
+    """True if the post is not Persian-dubbed - either it explicitly says
+    so (a "🚫 دوبله" checklist line) or it labels itself as subtitled with
+    no mention of a dub at all. The user wants dubbed audio only, not
     subtitles over the original audio."""
     text = raw_text or ""
     if NEGATED_SUBTITLE_RE.search(text):
         return False  # "without subtitles" is a pro-dub statement, not a subtitle marker
+
+    dub_status = None
+    for line in text.splitlines():
+        status = _line_dub_status(line)
+        if status == "no_dub":
+            return True  # explicit "dub does not apply" line is decisive
+        if status == "has_dub":
+            dub_status = "has_dub"
+    if dub_status == "has_dub":
+        return False
+
     haystack = text.lower()
     has_subtitle_marker = any(marker.lower() in haystack for marker in SUBTITLE_MARKERS)
-    has_dub_marker = any(marker.lower() in haystack for marker in DUB_MARKERS)
-    return has_subtitle_marker and not has_dub_marker
+    return has_subtitle_marker
 
 
 def parse_post(text: str) -> ParsedPost:
