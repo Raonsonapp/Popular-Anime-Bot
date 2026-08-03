@@ -13,11 +13,17 @@ import (
 )
 
 var statusLabels = map[string]string{
-	"ongoing":   "🟢 در حال پخش",
-	"completed": "✅ تکمیل‌شده",
-	"announced": "📢 اعلام‌شده",
+	"ongoing":   "🟢 Дар ҳоли пахш",
+	"completed": "✅ Анҷомёфта",
+	"announced": "📢 Эълоншуда",
 }
 
+// The caption's own labels/structure are in Tajik (Cyrillic), per the
+// user's request - but the anime's title/genre/synopsis text itself comes
+// through the ingest pipeline in Farsi (Perso-Arabic script), since that's
+// what the source channels and translator.py produce. Transliterating
+// that content into Tajik Cyrillic is a separate, non-trivial step this
+// doesn't attempt - only the static structure around it is Tajik.
 func formatCaption(a client.Anime) string {
 	var b strings.Builder
 
@@ -35,21 +41,21 @@ func formatCaption(a client.Anime) string {
 		for _, g := range a.Genres {
 			names = append(names, g.NamePersian)
 		}
-		fmt.Fprintf(&b, "🎭 ژانر: %s\n", strings.Join(names, "، "))
+		fmt.Fprintf(&b, "🎭 Жанр: %s\n", strings.Join(names, "، "))
 	}
 	if a.StudioName != "" {
-		fmt.Fprintf(&b, "🏢 استودیو: %s\n", htmlEscape(a.StudioName))
+		fmt.Fprintf(&b, "🏢 Студия: %s\n", htmlEscape(a.StudioName))
 	}
 	if a.Year != nil {
-		fmt.Fprintf(&b, "📅 سال: %d\n", *a.Year)
+		fmt.Fprintf(&b, "📅 Сол: %d\n", *a.Year)
 	}
 	if label, ok := statusLabels[a.Status]; ok {
-		fmt.Fprintf(&b, "📺 وضعیت: %s\n", label)
+		fmt.Fprintf(&b, "📺 Ҳолат: %s\n", label)
 	}
-	fmt.Fprintf(&b, "⭐ امتیاز: %.1f\n", a.RatingScore)
-	fmt.Fprintf(&b, "🎞 تعداد قسمت‌ها: %d\n", a.EpisodesCount)
+	fmt.Fprintf(&b, "⭐ Баҳо: %.1f\n", a.RatingScore)
+	fmt.Fprintf(&b, "🎞 Шумораи қисмҳо: %d\n", a.EpisodesCount)
 	if a.DurationMinutes != nil {
-		fmt.Fprintf(&b, "⏱ مدت هر قسمت: %d دقیقه\n", *a.DurationMinutes)
+		fmt.Fprintf(&b, "⏱ Давомнокии як қисм: %d дақиқа\n", *a.DurationMinutes)
 	}
 
 	if a.SynopsisPersian != nil && *a.SynopsisPersian != "" {
@@ -74,11 +80,11 @@ func buildKeyboard(a client.Anime, botUsername string) tgbotapi.InlineKeyboardMa
 
 	return tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonURL("▶️ تماشا در ربات", watchURL),
+			tgbotapi.NewInlineKeyboardButtonURL("▶️ Тамошо дар бот", watchURL),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("⭐ علاقه‌مندی", fmt.Sprintf("a:%d:fav", a.ID)),
-			tgbotapi.NewInlineKeyboardButtonURL("📢 اشتراک‌گذاری", shareURL),
+			tgbotapi.NewInlineKeyboardButtonData("⭐ Дӯстдошта", fmt.Sprintf("a:%d:fav", a.ID)),
+			tgbotapi.NewInlineKeyboardButtonURL("📢 Мубодила", shareURL),
 		),
 	)
 }

@@ -7,7 +7,10 @@ type AnimeRepository interface {
 	Create(ctx context.Context, a *Anime) (int64, error)
 	Update(ctx context.Context, a *Anime) error
 	GetByID(ctx context.Context, id int64) (*Anime, error)
-	FindBySourceTitle(ctx context.Context, sourceChannelID int64, originalTitle string) (*Anime, error)
+	// FindByTitle matches by original title alone (not scoped to a source
+	// channel) so the same anime scraped from multiple channels merges
+	// into one catalog entry instead of one per channel.
+	FindByTitle(ctx context.Context, originalTitle string) (*Anime, error)
 	List(ctx context.Context, f AnimeFilter) ([]Anime, int, error)
 	SetGenres(ctx context.Context, animeID int64, genreIDs []int64) error
 	IncrementView(ctx context.Context, animeID int64) error

@@ -50,10 +50,12 @@ type UpsertAnimeInput struct {
 	AutoPublish            bool
 }
 
-// UpsertAnime finds an existing anime scraped from the same source channel
-// with a matching original title, or creates a new one.
+// UpsertAnime finds an existing anime with a matching original title -
+// regardless of which source channel it came from, so the same anime
+// scraped from several channels merges into one catalog entry instead of
+// duplicating - or creates a new one.
 func (s *IngestService) UpsertAnime(ctx context.Context, in UpsertAnimeInput) (*domain.Anime, error) {
-	existing, err := s.Anime.FindBySourceTitle(ctx, in.SourceChannelID, in.TitleOriginal)
+	existing, err := s.Anime.FindByTitle(ctx, in.TitleOriginal)
 	if err != nil {
 		return nil, fmt.Errorf("lookup existing anime: %w", err)
 	}

@@ -24,12 +24,14 @@ func Load() Config {
 	}
 
 	return Config{
-		BotToken:         os.Getenv("BOT_TOKEN"),
-		APIBaseURL:       getEnv("API_BASE_URL", "http://api:8080"),
-		InternalAPIKey:   os.Getenv("INTERNAL_API_KEY"),
-		TargetChannelID:  targetChannelID,
-		BotUsername:      os.Getenv("BOT_USERNAME"),
-		PostCronSchedule: getEnv("POST_CRON_SCHEDULE", "0 9 * * *"),
+		BotToken:        os.Getenv("BOT_TOKEN"),
+		APIBaseURL:      getEnv("API_BASE_URL", "http://api:8080"),
+		InternalAPIKey:  os.Getenv("INTERNAL_API_KEY"),
+		TargetChannelID: targetChannelID,
+		BotUsername:     os.Getenv("BOT_USERNAME"),
+		// Twice a day (8am and 8pm), in the Asia/Dushanbe timezone the
+		// cron scheduler is configured with (see cmd/scheduler/main.go).
+		PostCronSchedule: getEnv("POST_CRON_SCHEDULE", "0 8,20 * * *"),
 		PopularityCron:   getEnv("POPULARITY_CRON_SCHEDULE", "0 * * * *"),
 		PostsPerRun:      postsPerRun,
 	}

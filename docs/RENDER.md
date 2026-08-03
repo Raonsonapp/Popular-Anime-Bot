@@ -2,20 +2,22 @@
 
 This covers the setup for `https://popular-anime-bot.onrender.com`. Render's
 free tier only keeps one thing alive for free per service: an HTTP-serving
-**Web Service**. So this deployment runs **everything that can share one
-container in that single service**: the API, the Telegram bot, and the
-MTProto listener all run together, as separate processes inside one
-container (`entrypoint.sh` starts them). Only `scheduler` is left out - see
-the note at the bottom.
+**Web Service**. So this deployment runs **everything in one container in
+that single service**: the API, the Telegram bot, the MTProto listener,
+and the scheduler all run together as separate processes
+(`entrypoint.sh` starts them).
 
 - The bot runs in **webhook mode**: Telegram pushes updates to us over
   HTTPS instead of us long-polling, so it fits the same HTTP server the
   API already runs (mounted at `/webhook`).
 - The MTProto listener runs as a background process in the same
   container, talking to the API over `localhost` (no public URL needed).
-- `scheduler` still needs to run somewhere else (a VPS via
-  `docker compose`, see `docs/DEPLOYMENT.md`) - it's cron-driven, not
-  request-driven, so there's no way to fit it into this same container.
+- The scheduler is cron-driven, not request-driven, but that only means
+  it doesn't need to bind `$PORT` - it runs as a third background process
+  in the same container, posting to `TARGET_CHANNEL_ID` on its own
+  schedule (default: 8am and 8pm, Asia/Dushanbe time) without needing a
+  separate VPS. Only set if you want the public showcase-channel posts;
+  leave `TARGET_CHANNEL_ID` unset to skip it.
 
 (The standalone `services/bot` and `services/mtproto-listener` also still
 work unchanged for a proper multi-container VPS deployment via
@@ -45,6 +47,9 @@ In the Render dashboard, under the service's **Environment** tab, set:
 | `TELEGRAM_API_ID`    | From https://my.telegram.org - enables the listener. Leave unset to run without it. |
 | `TELEGRAM_API_HASH`  | From https://my.telegram.org.                                         |
 | `STORAGE_CHANNEL_ID` | Numeric id of your private "storage" channel, looks like `-100xxxxxxxxxx` (forward any message from it to @userinfobot to get this). Your bot must be **admin** there. |
+| `TARGET_CHANNEL_ID`  | Optional - numeric id of a **public** showcase channel. If set, the scheduler posts newly-approved anime there twice a day (8am/8pm Dushanbe time) with a "watch in bot" button. Leave unset to skip this. |
+| `POSTS_PER_RUN`      | Optional - how many anime to post per run (default 3).                |
+| `POST_CRON_SCHEDULE` | Optional - override the posting schedule (default `0 8,20 * * *`, Asia/Dushanbe time). |
 
 Don't set `PORT` or `API_BASE_URL` - Render injects `PORT` automatically,
 and `entrypoint.sh` points the listener at the right local address itself.
@@ -157,14 +162,11 @@ the Render **Logs** tab (look for `backfilling ...` / `backfill
 finished: ...` lines). Safe to re-run - already-imported episodes are
 skipped via the same dedup logic used for live messages.
 
-## 8. Point the scheduler at it (if you run one)
+## 8. Public showcase posts (optional)
 
-Wherever you run `scheduler` (see `docs/DEPLOYMENT.md`), set:
-
-```
-API_BASE_URL=https://popular-anime-bot.onrender.com
-INTERNAL_API_KEY=<the same value you set on the Render service>
-```
+Set `TARGET_CHANNEL_ID` (see the table above) and the scheduler starts
+posting automatically - no separate deployment needed, it runs in this
+same container. Your bot must be **admin** in that channel too.
 
 ## Notes / limitations
 
@@ -174,6 +176,5 @@ INTERNAL_API_KEY=<the same value you set on the Render service>
   isn't watching Telegram either - new posts in your source channels will
   only get picked up after something wakes the service back up (e.g. a
   user messaging the bot). Upgrade the instance type if that gap matters.
-- `scheduler` isn't request-driven, so it can't share this container - it
-  still needs a VPS (`docs/DEPLOYMENT.md`) or a paid Render Background
-  Worker.
+  The scheduler is affected the same way - it won't fire while asleep,
+  only once something wakes the service back up.

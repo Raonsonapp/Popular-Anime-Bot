@@ -32,4 +32,17 @@ else
     echo "[entrypoint] TELEGRAM_API_ID/TELEGRAM_API_HASH not set, skipping mtproto-listener" >&2
 fi
 
+if [ -n "$TARGET_CHANNEL_ID" ] && [ -n "$BOT_TOKEN" ]; then
+    (
+        while true; do
+            unset PORT
+            /usr/local/bin/scheduler || true
+            echo "[entrypoint] scheduler exited, restarting in 5s..." >&2
+            sleep 5
+        done
+    ) &
+else
+    echo "[entrypoint] TARGET_CHANNEL_ID not set, skipping scheduler" >&2
+fi
+
 exec /usr/local/bin/api

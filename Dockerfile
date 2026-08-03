@@ -7,20 +7,25 @@
 #     BOT_TOKEN is set - see docs/RENDER.md)
 #   - the Python MTProto listener, as a background process in the same
 #     container
-#
-# scheduler is NOT started by this image - it's cron-driven, not
-# request-driven, so it still needs a separate always-on place to run
-# (a VPS via docker-compose). See docs/DEPLOYMENT.md and docs/RENDER.md.
+#   - the scheduler binary, also as a background process - it's
+#     cron-driven rather than request-driven, but that just means it
+#     doesn't need to bind $PORT, not that it needs its own container.
 #
 # The individual services/<name>/Dockerfile files are untouched and still
 # used by docker-compose.yml for a proper multi-container VPS deployment.
 
 FROM golang:1.25-alpine AS build
-WORKDIR /src
+WORKDIR /src/api
 COPY services/api/go.mod services/api/go.sum ./
 RUN go mod download
 COPY services/api/. .
 RUN CGO_ENABLED=0 go build -o /out/api ./cmd/api
+
+WORKDIR /src/scheduler
+COPY services/scheduler/go.mod services/scheduler/go.sum ./
+RUN go mod download
+COPY services/scheduler/. .
+RUN CGO_ENABLED=0 go build -o /out/scheduler ./cmd/scheduler
 
 # python:3.11-slim (glibc, not musl) so the listener's dependencies
 # (aiohttp etc.) install from prebuilt wheels without needing a compiler.
@@ -33,6 +38,7 @@ WORKDIR /app
 RUN mkdir -p /data
 
 COPY --from=build /out/api /usr/local/bin/api
+COPY --from=build /out/scheduler /usr/local/bin/scheduler
 
 COPY services/mtproto-listener/requirements.txt ./listener/requirements.txt
 RUN pip install --no-cache-dir -r ./listener/requirements.txt

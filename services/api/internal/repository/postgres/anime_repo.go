@@ -111,18 +111,18 @@ func (r *AnimeRepo) GetByID(ctx context.Context, id int64) (*domain.Anime, error
 	return &a, nil
 }
 
-func (r *AnimeRepo) FindBySourceTitle(ctx context.Context, sourceChannelID int64, originalTitle string) (*domain.Anime, error) {
+func (r *AnimeRepo) FindByTitle(ctx context.Context, originalTitle string) (*domain.Anime, error) {
 	var a domain.Anime
 	query := fmt.Sprintf(`
 		SELECT %s FROM animes
-		WHERE source_channel_id = $1 AND lower(title_original) = lower($2) AND is_deleted = false
+		WHERE lower(title_original) = lower($1) AND is_deleted = false
 		LIMIT 1`, animeColumns)
 
-	if err := r.db.GetContext(ctx, &a, query, sourceChannelID, originalTitle); err != nil {
+	if err := r.db.GetContext(ctx, &a, query, originalTitle); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("find anime by source title: %w", err)
+		return nil, fmt.Errorf("find anime by title: %w", err)
 	}
 	return &a, nil
 }

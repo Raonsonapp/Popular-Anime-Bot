@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
+	_ "time/tzdata" // embeds the IANA database, so LoadLocation works even on minimal base images without it installed
 
 	"github.com/robfig/cron/v3"
 
@@ -40,7 +42,14 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	c := cron.New()
+	// The default schedule (8am/8pm) means Dushanbe local time regardless
+	// of the server's own timezone (typically UTC on Render/most VPSes).
+	loc, err := time.LoadLocation("Asia/Dushanbe")
+	if err != nil {
+		logger.Warn("could not load Asia/Dushanbe timezone, falling back to UTC", "error", err)
+		loc = time.UTC
+	}
+	c := cron.New(cron.WithLocation(loc))
 
 	if _, err := c.AddFunc(cfg.PostCronSchedule, func() {
 		logger.Info("running scheduled publish job")
