@@ -75,6 +75,20 @@ class ApiClient:
         result = await self._request("GET", "/api/v1/anime", params={"search": title, "page_size": 20})
         return (result or {}).get("items") or []
 
+    async def list_all_anime(self) -> list[dict]:
+        """Walks every page of the full catalog - used for an overview
+        listing, not for anything user-facing/paginated."""
+        animes = []
+        page = 1
+        while True:
+            result = await self._request("GET", "/api/v1/anime", params={"page": page, "page_size": 100})
+            items = (result or {}).get("items") or []
+            animes.extend(items)
+            if len(items) < 100:
+                break
+            page += 1
+        return animes
+
     async def list_all_episodes(self, anime_id: int) -> list[dict]:
         """Walks every page so a delete-cleanup can find every episode's
         storage location, not just the first page's worth."""

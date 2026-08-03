@@ -312,6 +312,36 @@ def make_delete_anime_handler(client: TelegramClient):
     return handle_delete_anime
 
 
+def make_list_anime_handler(client: TelegramClient):
+    async def handle_list_anime(request):
+        if not check_key(request):
+            return web.Response(status=403, text="Invalid or missing ?key=")
+
+        api = ApiClient(Config.API_BASE_URL, Config.INTERNAL_API_KEY)
+        try:
+            animes = await api.list_all_anime()
+        finally:
+            await api.close()
+
+        if not animes:
+            return web.Response(text="Catalog is empty.")
+
+        animes.sort(key=lambda a: a.get("episodes_count", 0))
+        lines = [f"{len(animes)} anime in the catalog (id: title - N episode(s)):"]
+        total_episodes = 0
+        for a in animes:
+            count = a.get("episodes_count", 0)
+            total_episodes += count
+            title = a.get("title_persian") or a.get("title_original") or "?"
+            lines.append(f"id={a['id']}: {title} - {count} episode(s)")
+        lines.append(f"\nTotal: {len(animes)} anime, {total_episodes} episodes.")
+        lines.append("Delete one with /telegram-login/delete-anime?key=...&title=<name or part of it>")
+
+        return web.Response(text="\n".join(lines))
+
+    return handle_list_anime
+
+
 async def start_control_server(client: TelegramClient, api: ApiClient, on_authorized):
     """on_authorized is an async callback invoked exactly once, right after
     a fresh web login succeeds, so the caller can start the live listener
@@ -325,6 +355,7 @@ async def start_control_server(client: TelegramClient, api: ApiClient, on_author
     app.router.add_get("/telegram-login/status", make_status_handler(client))
     app.router.add_get("/telegram-login/register-storage", make_register_storage_handler(client))
     app.router.add_get("/telegram-login/delete-anime", make_delete_anime_handler(client))
+    app.router.add_get("/telegram-login/list-anime", make_list_anime_handler(client))
 
     runner = web.AppRunner(app)
     await runner.setup()
