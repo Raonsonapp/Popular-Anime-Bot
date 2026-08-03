@@ -71,6 +71,10 @@ class ApiClient:
     async def get_anime(self, anime_id: int) -> Optional[dict]:
         return await self._request("GET", f"/api/v1/anime/{anime_id}")
 
+    async def search_anime(self, title: str) -> list[dict]:
+        result = await self._request("GET", "/api/v1/anime", params={"search": title, "page_size": 20})
+        return (result or {}).get("items") or []
+
     async def list_all_episodes(self, anime_id: int) -> list[dict]:
         """Walks every page so a delete-cleanup can find every episode's
         storage location, not just the first page's worth."""

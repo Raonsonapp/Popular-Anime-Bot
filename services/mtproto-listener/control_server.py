@@ -238,6 +238,33 @@ def make_register_storage_handler(client: TelegramClient):
     return handle_register_storage
 
 
+async def _delete_anime_by_id(client: TelegramClient, api: ApiClient, anime_id: int):
+    anime = await api.get_anime(anime_id)
+    if not anime:
+        return None, 0
+
+    episodes = await api.list_all_episodes(anime_id)
+
+    by_chat: dict[int, list[int]] = {}
+    for ep in episodes:
+        by_chat.setdefault(ep["storage_chat_id"], []).append(ep["storage_message_id"])
+    poster_chat_id = anime.get("poster_storage_chat_id")
+    poster_message_id = anime.get("poster_storage_message_id")
+    if poster_chat_id and poster_message_id:
+        by_chat.setdefault(poster_chat_id, []).append(poster_message_id)
+
+    deleted_messages = 0
+    for chat_id, message_ids in by_chat.items():
+        try:
+            await client.delete_messages(chat_id, message_ids)
+            deleted_messages += len(message_ids)
+        except Exception:
+            logger.exception("failed to delete %d message(s) from chat %s", len(message_ids), chat_id)
+
+    await api.delete_anime(anime_id)
+    return anime, deleted_messages
+
+
 def make_delete_anime_handler(client: TelegramClient):
     async def handle_delete_anime(request):
         if not check_key(request):
@@ -246,35 +273,33 @@ def make_delete_anime_handler(client: TelegramClient):
             return web.Response(status=400, text="Not logged in yet - complete /telegram-login/ first.")
 
         raw_id = request.query.get("id", "").strip()
-        if not raw_id.isdigit():
-            return web.Response(status=400, text="Missing or invalid ?id=<anime_id>")
-        anime_id = int(raw_id)
+        title_query = request.query.get("title", "").strip()
+        if not raw_id and not title_query:
+            return web.Response(
+                status=400,
+                text="Missing ?title=<part of the anime's name> (easiest) or ?id=<anime_id>",
+            )
 
         api = ApiClient(Config.API_BASE_URL, Config.INTERNAL_API_KEY)
         try:
-            anime = await api.get_anime(anime_id)
+            if raw_id:
+                if not raw_id.isdigit():
+                    return web.Response(status=400, text="?id= must be a number")
+                anime_id = int(raw_id)
+            else:
+                matches = await api.search_anime(title_query)
+                if not matches:
+                    return web.Response(status=404, text=f"No anime found matching '{title_query}'")
+                if len(matches) > 1:
+                    lines = [f"Found {len(matches)} matches for '{title_query}' - be more specific, or delete by id:"]
+                    for m in matches:
+                        lines.append(f"  id={m['id']}: {m.get('title_persian') or m.get('title_original')}")
+                    return web.Response(text="\n".join(lines))
+                anime_id = matches[0]["id"]
+
+            anime, deleted_messages = await _delete_anime_by_id(client, api, anime_id)
             if not anime:
                 return web.Response(status=404, text=f"No anime with id={anime_id}")
-
-            episodes = await api.list_all_episodes(anime_id)
-
-            by_chat: dict[int, list[int]] = {}
-            for ep in episodes:
-                by_chat.setdefault(ep["storage_chat_id"], []).append(ep["storage_message_id"])
-            poster_chat_id = anime.get("poster_storage_chat_id")
-            poster_message_id = anime.get("poster_storage_message_id")
-            if poster_chat_id and poster_message_id:
-                by_chat.setdefault(poster_chat_id, []).append(poster_message_id)
-
-            deleted_messages = 0
-            for chat_id, message_ids in by_chat.items():
-                try:
-                    await client.delete_messages(chat_id, message_ids)
-                    deleted_messages += len(message_ids)
-                except Exception:
-                    logger.exception("failed to delete %d message(s) from chat %s", len(message_ids), chat_id)
-
-            await api.delete_anime(anime_id)
         finally:
             await api.close()
 
