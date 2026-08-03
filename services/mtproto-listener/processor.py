@@ -20,7 +20,7 @@ from deep_link_fetcher import (
     relay_to_storage,
 )
 from parser import is_adult_content, is_removed_placeholder, is_subtitle_only, parse_post
-from translator import translate_to_persian
+from translator import translate_to_tajik
 
 BETWEEN_LINKED_EPISODES_DELAY = 3  # be gentle - each one drives a second bot
 
@@ -76,7 +76,7 @@ async def handle_episode(client: TelegramClient, api: ApiClient, channel: dict, 
 
     storage_message_id = await resolve_storage_message_id(client, channel, message)
 
-    title_persian = translate_to_persian(parsed.title, channel["source_language"], Config.TRANSLATE_ENABLED)
+    title_persian = translate_to_tajik(parsed.title, channel["source_language"], Config.TRANSLATE_ENABLED)
 
     anime = await api.upsert_anime(
         {
@@ -133,10 +133,10 @@ async def handle_announcement(client: TelegramClient, api: ApiClient, channel: d
         poster_chat_id = Config.STORAGE_CHANNEL_ID
         poster_message_id = await resolve_storage_message_id(client, channel, message)
 
-    title_persian = translate_to_persian(parsed.title, channel["source_language"], Config.TRANSLATE_ENABLED)
-    synopsis_persian = translate_to_persian(parsed.synopsis, channel["source_language"], Config.TRANSLATE_ENABLED)
+    title_persian = translate_to_tajik(parsed.title, channel["source_language"], Config.TRANSLATE_ENABLED)
+    synopsis_persian = translate_to_tajik(parsed.synopsis, channel["source_language"], Config.TRANSLATE_ENABLED)
     genres_persian = [
-        translate_to_persian(g, channel["source_language"], Config.TRANSLATE_ENABLED) for g in parsed.genres
+        translate_to_tajik(g, channel["source_language"], Config.TRANSLATE_ENABLED) for g in parsed.genres
     ]
 
     payload = {
