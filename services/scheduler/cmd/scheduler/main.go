@@ -73,7 +73,7 @@ func main() {
 	logger.Info("scheduler started",
 		"post_cron", cfg.PostCronSchedule,
 		"popularity_cron", cfg.PopularityCron,
-		"target_channel_id", cfg.TargetChannelID,
+		"target_channel_ids", cfg.TargetChannelIDs,
 	)
 
 	<-ctx.Done()

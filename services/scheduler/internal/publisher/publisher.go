@@ -89,20 +89,29 @@ func buildKeyboard(a client.Anime, botUsername string) tgbotapi.InlineKeyboardMa
 	)
 }
 
-// Run publishes up to cfg.PostsPerRun not-yet-posted anime to the showcase channel.
+// Run publishes up to cfg.PostsPerRun not-yet-posted anime to every
+// configured showcase channel - each channel tracks its own "already
+// posted" state (see channel_posts' (anime_id, target_channel_id)
+// uniqueness), so the same anime can go out to more than one channel.
 func Run(ctx context.Context, cfg config.Config, api *tgbotapi.BotAPI, cl *client.Client, logger *slog.Logger) {
-	if cfg.TargetChannelID == 0 {
-		logger.Warn("TARGET_CHANNEL_ID not set, skipping publish run")
+	if len(cfg.TargetChannelIDs) == 0 {
+		logger.Warn("TARGET_CHANNEL_ID not set (or unparseable), skipping publish run")
 		return
 	}
 
-	pending, err := cl.PendingAnime(ctx, cfg.TargetChannelID, cfg.PostsPerRun)
+	for _, targetChannelID := range cfg.TargetChannelIDs {
+		runForChannel(ctx, cfg, targetChannelID, api, cl, logger)
+	}
+}
+
+func runForChannel(ctx context.Context, cfg config.Config, targetChannelID int64, api *tgbotapi.BotAPI, cl *client.Client, logger *slog.Logger) {
+	pending, err := cl.PendingAnime(ctx, targetChannelID, cfg.PostsPerRun)
 	if err != nil {
-		logger.Error("fetch pending anime", "error", err)
+		logger.Error("fetch pending anime", "target_channel_id", targetChannelID, "error", err)
 		return
 	}
 	if len(pending) == 0 {
-		logger.Info("no pending anime to publish")
+		logger.Info("no pending anime to publish", "target_channel_id", targetChannelID)
 		return
 	}
 
@@ -113,7 +122,7 @@ func Run(ctx context.Context, cfg config.Config, api *tgbotapi.BotAPI, cl *clien
 		var messageID int
 		if a.PosterStorageChatID != nil && a.PosterStorageMessageID != nil {
 			copyMsg := tgbotapi.CopyMessageConfig{
-				BaseChat:   tgbotapi.BaseChat{ChatID: cfg.TargetChannelID, ReplyMarkup: kb},
+				BaseChat:   tgbotapi.BaseChat{ChatID: targetChannelID, ReplyMarkup: kb},
 				FromChatID: *a.PosterStorageChatID,
 				MessageID:  int(*a.PosterStorageMessageID),
 				Caption:    caption,
@@ -121,7 +130,7 @@ func Run(ctx context.Context, cfg config.Config, api *tgbotapi.BotAPI, cl *clien
 			}
 			res, err := api.Send(copyMsg)
 			if err != nil {
-				logger.Error("publish anime (copy poster)", "anime_id", a.ID, "error", err)
+				logger.Error("publish anime (copy poster)", "anime_id", a.ID, "target_channel_id", targetChannelID, "error", err)
 				continue
 			}
 			messageID = res.MessageID
@@ -129,28 +138,28 @@ func Run(ctx context.Context, cfg config.Config, api *tgbotapi.BotAPI, cl *clien
 			var res tgbotapi.Message
 			var sendErr error
 			if a.PosterURL != nil && *a.PosterURL != "" {
-				photo := tgbotapi.NewPhoto(cfg.TargetChannelID, tgbotapi.FileURL(*a.PosterURL))
+				photo := tgbotapi.NewPhoto(targetChannelID, tgbotapi.FileURL(*a.PosterURL))
 				photo.Caption = caption
 				photo.ParseMode = tgbotapi.ModeHTML
 				photo.ReplyMarkup = kb
 				res, sendErr = api.Send(photo)
 			} else {
-				msg := tgbotapi.NewMessage(cfg.TargetChannelID, caption)
+				msg := tgbotapi.NewMessage(targetChannelID, caption)
 				msg.ParseMode = tgbotapi.ModeHTML
 				msg.ReplyMarkup = kb
 				res, sendErr = api.Send(msg)
 			}
 			if sendErr != nil {
-				logger.Error("publish anime", "anime_id", a.ID, "error", sendErr)
+				logger.Error("publish anime", "anime_id", a.ID, "target_channel_id", targetChannelID, "error", sendErr)
 				continue
 			}
 			messageID = res.MessageID
 		}
 
-		if err := cl.RecordPost(ctx, a.ID, cfg.TargetChannelID, int64(messageID)); err != nil {
-			logger.Error("record post", "anime_id", a.ID, "error", err)
+		if err := cl.RecordPost(ctx, a.ID, targetChannelID, int64(messageID)); err != nil {
+			logger.Error("record post", "anime_id", a.ID, "target_channel_id", targetChannelID, "error", err)
 			continue
 		}
-		logger.Info("published anime", "anime_id", a.ID, "title", a.Title)
+		logger.Info("published anime", "anime_id", a.ID, "target_channel_id", targetChannelID, "title", a.Title)
 	}
 }

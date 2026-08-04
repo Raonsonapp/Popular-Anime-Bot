@@ -47,7 +47,7 @@ In the Render dashboard, under the service's **Environment** tab, set:
 | `TELEGRAM_API_ID`    | From https://my.telegram.org - enables the listener. Leave unset to run without it. |
 | `TELEGRAM_API_HASH`  | From https://my.telegram.org.                                         |
 | `STORAGE_CHANNEL_ID` | Numeric id of your private "storage" channel, looks like `-100xxxxxxxxxx` (forward any message from it to @userinfobot to get this). Your bot must be **admin** there. |
-| `TARGET_CHANNEL_ID`  | Optional - numeric id of a **public** showcase channel. If set, the scheduler posts newly-approved anime there twice a day (8am/8pm Dushanbe time) with a "watch in bot" button. Leave unset to skip this. |
+| `TARGET_CHANNEL_ID`  | Optional - numeric id of a **public** showcase channel, e.g. `-1001234567890`. Multiple channels: comma-separate them (`-1001234567890,-1009876543210`) to post to all of them. If set, the scheduler posts newly-approved anime there twice a day (8am/8pm Dushanbe time) with a "watch in bot" button. Leave unset to skip this. |
 | `POSTS_PER_RUN`      | Optional - how many anime to post per run (default 3).                |
 | `POST_CRON_SCHEDULE` | Optional - override the posting schedule (default `0 8,20 * * *`, Asia/Dushanbe time). |
 
