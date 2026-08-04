@@ -71,12 +71,25 @@ REMOVED_MESSAGE_MARKERS = (
 
 QUALITY_RE = re.compile(r"\b(480p|720p|1080p|2160p|4k)\b", re.IGNORECASE)
 EPISODE_RE = re.compile(
-    r"(?:episode|epi?sode|\bep\b|قسمت|серия|эпизод)\s*[\-:#]?\s*(\d{1,4})", re.IGNORECASE
+    # Tajik "қисми N"/Farsi "قسمتی N" attach an izafet suffix before the
+    # number - optional, not absent, or that (very common) real-world
+    # phrasing never matches at all.
+    r"(?:episode|epi?sode|\bep\b|قسمت|серия|эпизод|қисм|кисм)\s*(?:и|ی)?\s*[\-:#]?\s*(\d{1,4})", re.IGNORECASE
 )
 # "S02E01" names both season and episode unambiguously in one go - checked
 # first, since it's far more reliable than the separate patterns below.
 SEASON_EPISODE_RE = re.compile(r"[Ss](\d{1,3})[Ee](\d{1,4})")
-SEASON_RE = re.compile(r"(?:season|сезон|فصل|фасл|мавсим)\s*[:#]?\s*(\d{1,3})", re.IGNORECASE)
+# Tajik/Farsi normally attach an izafet suffix ("-и"/"-ی") when a word like
+# "фасл"/"فصل" (season) modifies a following number - "Фасли 2", not
+# "Фасл 2" - so the suffix has to be optional, not absent, or the plain
+# word-only version (the far more common real phrasing) never matches.
+# "боб" (chapter) is also used as a season label by some channels.
+SEASON_RE = re.compile(
+    r"(?:season|сезон|فصل|فасل|фасл|мавсим|боб)\s*(?:и|ی)?\s*[:\-#]?\s*(\d{1,3})", re.IGNORECASE
+)
+# Fallback: a standalone "S4"/"_S04" tag (hashtag-style, no "E<n>" attached)
+# still names a season even with no explicit "season"/"фасл" word nearby.
+SEASON_TAG_RE = re.compile(r"(?:^|[_#\s])[Ss](\d{1,2})(?:[_\s]|$)")
 YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
 GENRE_LINE_RE = re.compile(r"(?:genre|жанр|ژانر)\s*[:：]\s*(.+)", re.IGNORECASE)
 STUDIO_LINE_RE = re.compile(r"(?:studio|студия|استودیو)\s*[:：]\s*(.+)", re.IGNORECASE)
@@ -109,6 +122,7 @@ def _clean_title(line: str) -> str:
     cleaned = SEASON_EPISODE_RE.sub("", cleaned)
     cleaned = EPISODE_RE.sub("", cleaned)
     cleaned = SEASON_RE.sub("", cleaned)
+    cleaned = SEASON_TAG_RE.sub("", cleaned)
     cleaned = QUALITY_RE.sub("", cleaned)
     return re.sub(r"\s{2,}", " ", cleaned).strip(" -–:|")
 
@@ -178,7 +192,7 @@ def parse_post(text: str) -> ParsedPost:
         if episode_match:
             result.is_episode = True
             result.episode_number = int(episode_match.group(1))
-        season_match = SEASON_RE.search(text)
+        season_match = SEASON_RE.search(text) or SEASON_TAG_RE.search(text)
         if season_match:
             result.season_number = int(season_match.group(1))
 

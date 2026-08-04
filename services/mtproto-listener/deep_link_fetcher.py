@@ -41,7 +41,9 @@ DEEP_LINK_RE = re.compile(
 # "eposide" is a real, repeatedly observed misspelling of "episode" in the
 # wild (not a typo on our end) - some channels only ever spell it that way.
 EPISODE_LABEL_RE = re.compile(
-    r"(?:episode|eposide|epi?sode|\bep\b|قسمت|қисм|кисм)\s*[_\-:#]?\s*(\d{1,4})", re.IGNORECASE
+    # Tajik "қисми N" attaches an izafet suffix before the number -
+    # optional, not absent, or that common real-world phrasing never matches.
+    r"(?:episode|eposide|epi?sode|\bep\b|قسمت|қисм|кисм)\s*(?:и|ی)?\s*[_\-:#]?\s*(\d{1,4})", re.IGNORECASE
 )
 # A single link covering a whole range (e.g. "E01_E20") - one /start gets a
 # stream of many files back, not one specific episode, so it needs
@@ -51,7 +53,12 @@ RANGE_LABEL_RE = re.compile(r"[Ee]?\d{1,4}\s*[-_–]\s*[Ee]?\d{1,4}")
 # (e.g. "Parasyte S01E03...") even when the *link* that fetched it only
 # pointed at a whole batch.
 SXXEXX_RE = re.compile(r"[Ss](\d{1,3})[Ee](\d{1,4})")
-SEASON_WORD_RE = re.compile(r"(?:season|сезон|فصل|фасл|мавсим)\s*[:#]?\s*(\d{1,3})", re.IGNORECASE)
+# Tajik/Farsi attach an izafet suffix ("-и"/"-ی") when "фасл"/"فصل" (season)
+# modifies a following number - "Фасли 2", not "Фасл 2" - so it must be
+# optional, not absent, or the more common real-world phrasing never matches.
+SEASON_WORD_RE = re.compile(
+    r"(?:season|сезон|فصل|фасл|мавсим|боб)\s*(?:и|ی)?\s*[:\-#]?\s*(\d{1,3})", re.IGNORECASE
+)
 SPONSOR_CHANNEL_RE = re.compile(r"t\.me/([A-Za-z0-9_]{5,32})/?$", re.IGNORECASE)
 
 
