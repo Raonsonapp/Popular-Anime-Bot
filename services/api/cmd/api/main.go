@@ -90,6 +90,12 @@ func main() {
 	loginTarget, _ := url.Parse("http://localhost:8091")
 	router.Handle("/telegram-login/*", httputil.NewSingleHostReverseProxy(loginTarget))
 
+	// Same trick for the scheduler's on-demand publish trigger - lets a
+	// showcase-channel post be forced out immediately instead of waiting
+	// for the next cron tick. See services/scheduler/cmd/scheduler/main.go.
+	schedulerTarget, _ := url.Parse("http://localhost:8092")
+	router.Handle("/scheduler/*", httputil.NewSingleHostReverseProxy(schedulerTarget))
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           router,

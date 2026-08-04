@@ -168,6 +168,13 @@ Set `TARGET_CHANNEL_ID` (see the table above) and the scheduler starts
 posting automatically - no separate deployment needed, it runs in this
 same container. Your bot must be **admin** in that channel too.
 
+To publish immediately instead of waiting for the next 8am/8pm tick
+(e.g. to catch up on a missed run):
+
+```
+https://popular-anime-bot.onrender.com/scheduler/trigger?key=<INTERNAL_API_KEY>
+```
+
 ## Notes / limitations
 
 - Render's free Web Service instance type sleeps after 15 minutes of

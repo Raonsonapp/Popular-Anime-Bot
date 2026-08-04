@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -17,6 +18,33 @@ import (
 	"popular-anime-bot/scheduler/internal/config"
 	"popular-anime-bot/scheduler/internal/publisher"
 )
+
+// TriggerPort is where a tiny local-only HTTP server listens for an
+// on-demand publish run - reachable publicly via the Go API's reverse
+// proxy at /scheduler/trigger (see cmd/api/main.go), for whenever waiting
+// for the next cron tick isn't good enough (e.g. catching up after a bug
+// that skipped the scheduled runs).
+const TriggerPort = "8092"
+
+func startTriggerServer(ctx context.Context, cfg config.Config, api *tgbotapi.BotAPI, cl *apiclient.Client, logger *slog.Logger) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/scheduler/trigger", func(w http.ResponseWriter, r *http.Request) {
+		if cfg.InternalAPIKey == "" || r.URL.Query().Get("key") != cfg.InternalAPIKey {
+			http.Error(w, "invalid or missing ?key=", http.StatusForbidden)
+			return
+		}
+		logger.Info("manual publish trigger requested")
+		go publisher.Run(ctx, cfg, api, cl, logger)
+		w.Write([]byte("Publish run triggered - check the Render logs for progress."))
+	})
+
+	srv := &http.Server{Addr: "127.0.0.1:" + TriggerPort, Handler: mux}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("trigger server error", "error", err)
+		}
+	}()
+}
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -49,6 +77,8 @@ func main() {
 		logger.Warn("could not load Asia/Dushanbe timezone, falling back to UTC", "error", err)
 		loc = time.UTC
 	}
+	startTriggerServer(ctx, cfg, api, cl, logger)
+
 	c := cron.New(cron.WithLocation(loc))
 
 	if _, err := c.AddFunc(cfg.PostCronSchedule, func() {
