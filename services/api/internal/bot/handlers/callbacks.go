@@ -89,13 +89,20 @@ func (b *Bot) handleCallback(ctx context.Context, cq *tgbotapi.CallbackQuery) {
 			return
 		}
 		b.sendAnimeDetail(ctx, chatID, telegramUserID, animeID)
-	case "e":
-		if len(parts) < 3 {
+	case "sn":
+		if len(parts) < 2 {
 			return
 		}
 		animeID, _ := strconv.ParseInt(parts[1], 10, 64)
-		page, _ := strconv.Atoi(parts[2])
-		b.sendEpisodesList(ctx, chatID, lang, animeID, page)
+		b.sendWatchEntry(ctx, chatID, lang, animeID)
+	case "e":
+		if len(parts) < 4 {
+			return
+		}
+		animeID, _ := strconv.ParseInt(parts[1], 10, 64)
+		seasonID, _ := strconv.ParseInt(parts[2], 10, 64)
+		page, _ := strconv.Atoi(parts[3])
+		b.sendEpisodesList(ctx, chatID, lang, animeID, seasonID, page)
 	case "w":
 		if len(parts) < 2 {
 			return

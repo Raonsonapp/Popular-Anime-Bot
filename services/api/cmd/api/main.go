@@ -38,6 +38,7 @@ func main() {
 
 	animeRepo := postgres.NewAnimeRepo(db)
 	episodeRepo := postgres.NewEpisodeRepo(db)
+	seasonRepo := postgres.NewSeasonRepo(db)
 	genreRepo := postgres.NewGenreRepo(db)
 	studioRepo := postgres.NewStudioRepo(db)
 	sourceChannelRepo := postgres.NewSourceChannelRepo(db)
@@ -48,8 +49,8 @@ func main() {
 	importLogRepo := postgres.NewImportLogRepo(db)
 	listenerSessionRepo := postgres.NewListenerSessionRepo(db)
 
-	catalog := usecase.NewCatalogService(animeRepo, episodeRepo, genreRepo, studioRepo)
-	ingest := usecase.NewIngestService(animeRepo, episodeRepo, genreRepo, studioRepo, sourceChannelRepo, importLogRepo)
+	catalog := usecase.NewCatalogService(animeRepo, episodeRepo, seasonRepo, genreRepo, studioRepo)
+	ingest := usecase.NewIngestService(animeRepo, episodeRepo, seasonRepo, genreRepo, studioRepo, sourceChannelRepo, importLogRepo)
 	users := usecase.NewUserService(userRepo, favoriteRepo, historyRepo)
 	publish := usecase.NewPublishService(animeRepo, channelPostRepo)
 

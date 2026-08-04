@@ -13,6 +13,7 @@ import (
 type IngestService struct {
 	Anime         domain.AnimeRepository
 	Episode       domain.EpisodeRepository
+	Season        domain.SeasonRepository
 	Genre         domain.GenreRepository
 	Studio        domain.StudioRepository
 	SourceChannel domain.SourceChannelRepository
@@ -22,12 +23,13 @@ type IngestService struct {
 func NewIngestService(
 	a domain.AnimeRepository,
 	e domain.EpisodeRepository,
+	sn domain.SeasonRepository,
 	g domain.GenreRepository,
 	s domain.StudioRepository,
 	sc domain.SourceChannelRepository,
 	il domain.ImportLogRepository,
 ) *IngestService {
-	return &IngestService{Anime: a, Episode: e, Genre: g, Studio: s, SourceChannel: sc, ImportLog: il}
+	return &IngestService{Anime: a, Episode: e, Season: sn, Genre: g, Studio: s, SourceChannel: sc, ImportLog: il}
 }
 
 type UpsertAnimeInput struct {
@@ -188,6 +190,7 @@ func (s *IngestService) UpsertAnime(ctx context.Context, in UpsertAnimeInput) (*
 
 type UpsertEpisodeInput struct {
 	AnimeID          int64
+	SeasonNumber     int // 0 means "no season info" - episode_number is used as-is, ungrouped
 	EpisodeNumber    int
 	Title            string
 	Quality          string
@@ -209,6 +212,13 @@ func (s *IngestService) UpsertEpisode(ctx context.Context, in UpsertEpisodeInput
 		StorageMessageID: in.StorageMessageID,
 		SourceChannelID:  &in.SourceChannelID,
 		SourceMessageID:  &in.SourceMessageID,
+	}
+	if in.SeasonNumber > 0 {
+		seasonID, err := s.Season.FindOrCreate(ctx, in.AnimeID, in.SeasonNumber)
+		if err != nil {
+			return nil, fmt.Errorf("resolve season: %w", err)
+		}
+		e.SeasonID = &seasonID
 	}
 	if in.Title != "" {
 		e.Title = &in.Title

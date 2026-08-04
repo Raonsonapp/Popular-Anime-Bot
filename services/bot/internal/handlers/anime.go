@@ -62,8 +62,35 @@ func (b *Bot) sendAnimeDetail(ctx context.Context, chatID, telegramUserID int64,
 	b.reply(chatID, caption, &kb)
 }
 
-func (b *Bot) sendEpisodesList(ctx context.Context, chatID int64, lang i18n.Lang, animeID int64, page int) {
-	resp, err := b.Client.ListEpisodes(ctx, animeID, page)
+// sendWatchEntry is what the anime detail screen's "Watch" button leads
+// to: if the anime has more than one season on record, the user picks
+// one first, since seasons each restart at episode 1 and flattening them
+// into a single list produces several identical-looking "Episode 1"
+// buttons with no way to tell them apart. A single season (or no season
+// data at all, e.g. a plain single-cour show) skips straight to the
+// episode list, matching the old direct-to-episodes behavior.
+func (b *Bot) sendWatchEntry(ctx context.Context, chatID int64, lang i18n.Lang, animeID int64) {
+	seasons, err := b.Client.ListSeasons(ctx, animeID)
+	if err != nil {
+		b.Logger.Error("list seasons", "error", err)
+		seasons = nil
+	}
+
+	if len(seasons) <= 1 {
+		var seasonID int64
+		if len(seasons) == 1 {
+			seasonID = seasons[0].ID
+		}
+		b.sendEpisodesList(ctx, chatID, lang, animeID, seasonID, 1)
+		return
+	}
+
+	kb := keyboards.SeasonsKeyboard(lang, animeID, seasons)
+	b.reply(chatID, i18n.T(lang, "choose_season"), &kb)
+}
+
+func (b *Bot) sendEpisodesList(ctx context.Context, chatID int64, lang i18n.Lang, animeID, seasonID int64, page int) {
+	resp, err := b.Client.ListEpisodes(ctx, animeID, seasonID, page)
 	if err != nil {
 		b.reply(chatID, i18n.T(lang, "episodes_error"), nil)
 		return
@@ -72,7 +99,7 @@ func (b *Bot) sendEpisodesList(ctx context.Context, chatID int64, lang i18n.Lang
 		b.reply(chatID, i18n.T(lang, "no_episodes"), nil)
 		return
 	}
-	kb := keyboards.EpisodesKeyboard(lang, animeID, resp.Items, page, resp.Total, 10)
+	kb := keyboards.EpisodesKeyboard(lang, animeID, seasonID, resp.Items, page, resp.Total, 10)
 	b.reply(chatID, i18n.Tf(lang, "episodes_header", page), &kb)
 }
 

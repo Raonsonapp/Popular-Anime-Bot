@@ -10,12 +10,13 @@ import (
 type CatalogService struct {
 	Anime   domain.AnimeRepository
 	Episode domain.EpisodeRepository
+	Season  domain.SeasonRepository
 	Genre   domain.GenreRepository
 	Studio  domain.StudioRepository
 }
 
-func NewCatalogService(a domain.AnimeRepository, e domain.EpisodeRepository, g domain.GenreRepository, s domain.StudioRepository) *CatalogService {
-	return &CatalogService{Anime: a, Episode: e, Genre: g, Studio: s}
+func NewCatalogService(a domain.AnimeRepository, e domain.EpisodeRepository, sn domain.SeasonRepository, g domain.GenreRepository, s domain.StudioRepository) *CatalogService {
+	return &CatalogService{Anime: a, Episode: e, Season: sn, Genre: g, Studio: s}
 }
 
 func (c *CatalogService) GetAnime(ctx context.Context, id int64) (*domain.Anime, error) {
@@ -41,8 +42,12 @@ func (c *CatalogService) RandomAnime(ctx context.Context) (*domain.Anime, error)
 	return &list[0], nil
 }
 
-func (c *CatalogService) ListEpisodes(ctx context.Context, animeID int64, page, pageSize int) ([]domain.Episode, int, error) {
-	return c.Episode.ListByAnime(ctx, animeID, page, pageSize)
+func (c *CatalogService) ListEpisodes(ctx context.Context, animeID, seasonID int64, page, pageSize int) ([]domain.Episode, int, error) {
+	return c.Episode.ListByAnime(ctx, animeID, seasonID, page, pageSize)
+}
+
+func (c *CatalogService) ListSeasons(ctx context.Context, animeID int64) ([]domain.Season, error) {
+	return c.Season.ListByAnime(ctx, animeID)
 }
 
 func (c *CatalogService) RecordView(ctx context.Context, animeID int64) error {

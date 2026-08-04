@@ -23,8 +23,20 @@ type EpisodeRepository interface {
 	Update(ctx context.Context, e *Episode) error
 	GetByID(ctx context.Context, id int64) (*Episode, error)
 	FindBySource(ctx context.Context, sourceChannelID, sourceMessageID int64) (*Episode, error)
-	ListByAnime(ctx context.Context, animeID int64, page, pageSize int) ([]Episode, int, error)
+	// ListByAnime lists episodes for an anime, optionally narrowed to one
+	// season (seasonID == 0 means "no filter" - every episode regardless
+	// of season, the pre-seasons behavior).
+	ListByAnime(ctx context.Context, animeID, seasonID int64, page, pageSize int) ([]Episode, int, error)
 	SoftDeleteBySource(ctx context.Context, sourceChannelID, sourceMessageID int64) error
+}
+
+// SeasonRepository lets multi-season anime (scraped as e.g. "S02E01" in a
+// filename) group their episodes under a season the bot can let the user
+// pick, instead of flattening every season's episode 1, 2, 3... into one
+// ambiguous, overlapping list.
+type SeasonRepository interface {
+	FindOrCreate(ctx context.Context, animeID int64, seasonNumber int) (int64, error)
+	ListByAnime(ctx context.Context, animeID int64) ([]Season, error)
 }
 
 type GenreRepository interface {

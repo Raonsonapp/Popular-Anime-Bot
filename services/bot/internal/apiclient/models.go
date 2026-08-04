@@ -29,11 +29,20 @@ type Anime struct {
 type Episode struct {
 	ID               int64   `json:"id"`
 	AnimeID          int64   `json:"anime_id"`
+	SeasonID         *int64  `json:"season_id"`
 	EpisodeNumber    int     `json:"episode_number"`
 	Title            *string `json:"title"`
 	Quality          string  `json:"quality"`
 	StorageChatID    int64   `json:"storage_chat_id"`
 	StorageMessageID int64   `json:"storage_message_id"`
+}
+
+type Season struct {
+	ID            int64   `json:"id"`
+	AnimeID       int64   `json:"anime_id"`
+	SeasonNumber  int     `json:"season_number"`
+	EpisodesCount int     `json:"episodes_count"`
+	Title         *string `json:"title,omitempty"`
 }
 
 type ListResponse struct {

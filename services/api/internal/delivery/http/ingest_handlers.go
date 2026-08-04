@@ -67,6 +67,7 @@ func (h *Handler) UpsertAnime(w http.ResponseWriter, r *http.Request) {
 
 type upsertEpisodeRequest struct {
 	AnimeID          int64  `json:"anime_id"`
+	SeasonNumber     int    `json:"season_number"`
 	EpisodeNumber    int    `json:"episode_number"`
 	Title            string `json:"title"`
 	Quality          string `json:"quality"`
@@ -92,6 +93,7 @@ func (h *Handler) UpsertEpisode(w http.ResponseWriter, r *http.Request) {
 
 	e, err := h.Ingest.UpsertEpisode(r.Context(), usecase.UpsertEpisodeInput{
 		AnimeID:          req.AnimeID,
+		SeasonNumber:     req.SeasonNumber,
 		EpisodeNumber:    req.EpisodeNumber,
 		Title:            req.Title,
 		Quality:          req.Quality,

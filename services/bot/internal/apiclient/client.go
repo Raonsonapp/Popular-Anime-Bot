@@ -94,8 +94,11 @@ func (c *Client) RecordAnimeView(ctx context.Context, id int64) error {
 	return c.do(ctx, http.MethodPost, fmt.Sprintf("/api/v1/anime/%d/view", id), nil, nil, nil)
 }
 
-func (c *Client) ListEpisodes(ctx context.Context, animeID int64, page int) (*EpisodeListResponse, error) {
+func (c *Client) ListEpisodes(ctx context.Context, animeID, seasonID int64, page int) (*EpisodeListResponse, error) {
 	q := url.Values{}
+	if seasonID > 0 {
+		q.Set("season_id", fmt.Sprint(seasonID))
+	}
 	q.Set("page", fmt.Sprint(page))
 	q.Set("page_size", "10")
 	var out EpisodeListResponse
@@ -103,6 +106,14 @@ func (c *Client) ListEpisodes(ctx context.Context, animeID int64, page int) (*Ep
 		return nil, err
 	}
 	return &out, nil
+}
+
+func (c *Client) ListSeasons(ctx context.Context, animeID int64) ([]Season, error) {
+	var out []Season
+	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/api/v1/anime/%d/seasons", animeID), nil, nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *Client) GetEpisode(ctx context.Context, id int64) (*Episode, error) {

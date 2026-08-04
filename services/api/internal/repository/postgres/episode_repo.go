@@ -35,10 +35,11 @@ func (r *EpisodeRepo) Create(ctx context.Context, e *domain.Episode) (int64, err
 			:storage_chat_id, :storage_message_id, :source_channel_id, :source_message_id,
 			:duration_seconds, :size_bytes
 		)
-		ON CONFLICT (anime_id, episode_number, quality, language_id)
+		ON CONFLICT (anime_id, (COALESCE(season_id, 0)), episode_number, quality, (COALESCE(language_id, 0)))
 		DO UPDATE SET
 			storage_chat_id = EXCLUDED.storage_chat_id,
 			storage_message_id = EXCLUDED.storage_message_id,
+			season_id = EXCLUDED.season_id,
 			updated_at = now()
 		RETURNING id`
 
@@ -107,7 +108,7 @@ func (r *EpisodeRepo) FindBySource(ctx context.Context, sourceChannelID, sourceM
 	return &e, nil
 }
 
-func (r *EpisodeRepo) ListByAnime(ctx context.Context, animeID int64, page, pageSize int) ([]domain.Episode, int, error) {
+func (r *EpisodeRepo) ListByAnime(ctx context.Context, animeID, seasonID int64, page, pageSize int) ([]domain.Episode, int, error) {
 	if pageSize <= 0 || pageSize > 100 {
 		pageSize = 20
 	}
@@ -117,18 +118,19 @@ func (r *EpisodeRepo) ListByAnime(ctx context.Context, animeID int64, page, page
 
 	var total int
 	if err := r.db.GetContext(ctx, &total,
-		`SELECT COUNT(*) FROM episodes WHERE anime_id = $1 AND is_deleted = false`, animeID); err != nil {
+		`SELECT COUNT(*) FROM episodes WHERE anime_id = $1 AND is_deleted = false AND ($2 = 0 OR season_id = $2)`,
+		animeID, seasonID); err != nil {
 		return nil, 0, fmt.Errorf("count episodes: %w", err)
 	}
 
 	query := fmt.Sprintf(`
 		SELECT %s FROM episodes
-		WHERE anime_id = $1 AND is_deleted = false
+		WHERE anime_id = $1 AND is_deleted = false AND ($2 = 0 OR season_id = $2)
 		ORDER BY episode_number ASC
-		LIMIT $2 OFFSET $3`, episodeColumns)
+		LIMIT $3 OFFSET $4`, episodeColumns)
 
 	var episodes []domain.Episode
-	if err := r.db.SelectContext(ctx, &episodes, query, animeID, pageSize, (page-1)*pageSize); err != nil {
+	if err := r.db.SelectContext(ctx, &episodes, query, animeID, seasonID, pageSize, (page-1)*pageSize); err != nil {
 		return nil, 0, fmt.Errorf("list episodes: %w", err)
 	}
 	return episodes, total, nil

@@ -29,6 +29,7 @@ func NewRouter(h *Handler, internalAPIKey string) chi.Router {
 		r.Get("/anime/{id}", h.GetAnime)
 		r.Post("/anime/{id}/view", h.RecordAnimeView)
 		r.Get("/anime/{id}/episodes", h.ListEpisodes)
+		r.Get("/anime/{id}/seasons", h.ListSeasons)
 		r.Get("/episodes/{id}", h.GetEpisode)
 		r.Get("/genres", h.ListGenres)
 		r.Get("/studios", h.ListStudios)

@@ -73,11 +73,12 @@ type Studio struct {
 }
 
 type Season struct {
-	ID           int64   `db:"id" json:"id"`
-	AnimeID      int64   `db:"anime_id" json:"anime_id"`
-	SeasonNumber int     `db:"season_number" json:"season_number"`
-	Title        *string `db:"title" json:"title,omitempty"`
-	Year         *int    `db:"year" json:"year,omitempty"`
+	ID            int64   `db:"id" json:"id"`
+	AnimeID       int64   `db:"anime_id" json:"anime_id"`
+	SeasonNumber  int     `db:"season_number" json:"season_number"`
+	Title         *string `db:"title" json:"title,omitempty"`
+	Year          *int    `db:"year" json:"year,omitempty"`
+	EpisodesCount int     `db:"episodes_count" json:"episodes_count"`
 }
 
 // AnimeFilter narrows the anime listing / search query.

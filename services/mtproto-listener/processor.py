@@ -13,11 +13,11 @@ from telethon.tl.types import DocumentAttributeVideo
 from api_client import ApiClient
 from config import Config
 from deep_link_fetcher import (
-    episode_number_from_delivered,
     extract_episode_deep_links,
     fetch_batch_files,
     fetch_episode_file,
     relay_to_storage,
+    season_and_episode_from_delivered,
 )
 from parser import is_adult_content, is_removed_placeholder, is_subtitle_only, parse_post
 from translator import translate_to_tajik
@@ -91,6 +91,7 @@ async def handle_episode(client: TelegramClient, api: ApiClient, channel: dict, 
     episode = await api.upsert_episode(
         {
             "anime_id": anime["id"],
+            "season_number": parsed.season_number or 0,
             "episode_number": parsed.episode_number or 0,
             "quality": parsed.quality,
             "storage_chat_id": Config.STORAGE_CHANNEL_ID,
@@ -160,12 +161,12 @@ async def handle_announcement(client: TelegramClient, api: ApiClient, channel: d
     logger.info("imported/updated anime announcement '%s' (id=%s)", title_persian, anime["id"])
 
     if Config.FETCH_LINKED_EPISODES:
-        await fetch_linked_episodes(client, api, channel, message, anime["id"], parsed.quality)
+        await fetch_linked_episodes(client, api, channel, message, anime["id"], parsed.quality, parsed.season_number)
 
 
 async def _store_linked_episode(
     api: ApiClient, client: TelegramClient, channel: dict, message, anime_id: int, quality: str,
-    episode_number: int, bot_username: str, file_message,
+    season_number: int | None, episode_number: int, bot_username: str, file_message,
 ):
     """Shared tail end for both a single-episode link and one file out of
     a batch link: dub/subtitle-check the delivered file, relay it into the
@@ -186,14 +187,16 @@ async def _store_linked_episode(
     episode = await api.upsert_episode(
         {
             "anime_id": anime_id,
+            "season_number": season_number or 0,
             "episode_number": episode_number,
             "quality": quality,
             "storage_chat_id": Config.STORAGE_CHANNEL_ID,
             "storage_message_id": storage_message_id,
             "source_channel_id": channel["id"],
-            # Synthetic but stable/unique per episode so re-processing this
-            # same announcement updates rather than duplicates.
-            "source_message_id": message.id * 1000 + episode_number,
+            # Synthetic but stable/unique per (season, episode) so
+            # re-processing this same announcement updates rather than
+            # duplicates, and different seasons' episode 1's don't collide.
+            "source_message_id": message.id * 10_000_000 + (season_number or 0) * 10_000 + episode_number,
         }
     )
     await api.create_import_log(
@@ -204,7 +207,10 @@ async def _store_linked_episode(
     logger.info("fetched linked episode %s for anime %s via @%s", episode_number, anime_id, bot_username)
 
 
-async def fetch_linked_episodes(client: TelegramClient, api: ApiClient, channel: dict, message, anime_id: int, quality: str):
+async def fetch_linked_episodes(
+    client: TelegramClient, api: ApiClient, channel: dict, message, anime_id: int, quality: str,
+    season_number: int | None = None,
+):
     """Some channels hide each episode behind a link into a separate file
     delivery bot instead of attaching the video to the post (see
     deep_link_fetcher.py). Handles two shapes: a link naming one specific
@@ -263,7 +269,7 @@ async def fetch_linked_episodes(client: TelegramClient, api: ApiClient, channel:
 
             await _store_linked_episode(
                 api, client, channel, message, anime_id, quality,
-                link["episode_number"], link["bot_username"], file_message,
+                season_number, link["episode_number"], link["bot_username"], file_message,
             )
         except Exception:
             logger.exception("failed to fetch linked episode %s via @%s", link.get("episode_number"), link.get("bot_username"))
@@ -292,7 +298,7 @@ async def fetch_linked_episodes(client: TelegramClient, api: ApiClient, channel:
                 message.id, link["label"], link["bot_username"], len(file_messages),
             )
             for file_message in file_messages:
-                episode_number = episode_number_from_delivered(file_message)
+                file_season_number, episode_number = season_and_episode_from_delivered(file_message)
                 if episode_number is None:
                     logger.info(
                         "batch file from @%s had no recognizable episode number, skipping: %s",
@@ -301,7 +307,7 @@ async def fetch_linked_episodes(client: TelegramClient, api: ApiClient, channel:
                     continue
                 await _store_linked_episode(
                     api, client, channel, message, anime_id, quality,
-                    episode_number, link["bot_username"], file_message,
+                    file_season_number or season_number, episode_number, link["bot_username"], file_message,
                 )
         except Exception:
             logger.exception("failed to fetch batch link '%s' via @%s", link.get("label"), link.get("bot_username"))

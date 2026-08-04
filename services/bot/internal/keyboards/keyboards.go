@@ -82,7 +82,7 @@ func AnimeDetailKeyboard(lang i18n.Lang, a apiclient.Anime, isFavorite bool, bot
 
 	return tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(i18n.T(lang, "watch"), fmt.Sprintf("e:%d:1", a.ID)),
+			tgbotapi.NewInlineKeyboardButtonData(i18n.T(lang, "watch"), fmt.Sprintf("sn:%d", a.ID)),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(favLabel, fmt.Sprintf("a:%d:fav", a.ID)),
@@ -92,7 +92,23 @@ func AnimeDetailKeyboard(lang i18n.Lang, a apiclient.Anime, isFavorite bool, bot
 	)
 }
 
-func EpisodesKeyboard(lang i18n.Lang, animeID int64, episodes []apiclient.Episode, page, total, pageSize int) tgbotapi.InlineKeyboardMarkup {
+// SeasonsKeyboard lets the user pick which season to browse, when an
+// anime has more than one on record (see Bot.sendWatchEntry).
+func SeasonsKeyboard(lang i18n.Lang, animeID int64, seasons []apiclient.Season) tgbotapi.InlineKeyboardMarkup {
+	var rows [][]tgbotapi.InlineKeyboardButton
+	for _, s := range seasons {
+		label := i18n.Tf(lang, "season_button", s.SeasonNumber, s.EpisodesCount)
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("e:%d:%d:1", animeID, s.ID)),
+		))
+	}
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData(i18n.T(lang, "back_to_anime"), fmt.Sprintf("a:%d", animeID)),
+	))
+	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+}
+
+func EpisodesKeyboard(lang i18n.Lang, animeID, seasonID int64, episodes []apiclient.Episode, page, total, pageSize int) tgbotapi.InlineKeyboardMarkup {
 	var rows [][]tgbotapi.InlineKeyboardButton
 	var row []tgbotapi.InlineKeyboardButton
 	for i, e := range episodes {
@@ -109,10 +125,10 @@ func EpisodesKeyboard(lang i18n.Lang, animeID int64, episodes []apiclient.Episod
 
 	var nav []tgbotapi.InlineKeyboardButton
 	if page > 1 {
-		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData(i18n.T(lang, "prev"), fmt.Sprintf("e:%d:%d", animeID, page-1)))
+		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData(i18n.T(lang, "prev"), fmt.Sprintf("e:%d:%d:%d", animeID, seasonID, page-1)))
 	}
 	if page*pageSize < total {
-		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData(i18n.T(lang, "next"), fmt.Sprintf("e:%d:%d", animeID, page+1)))
+		nav = append(nav, tgbotapi.NewInlineKeyboardButtonData(i18n.T(lang, "next"), fmt.Sprintf("e:%d:%d:%d", animeID, seasonID, page+1)))
 	}
 	if len(nav) > 0 {
 		rows = append(rows, nav)

@@ -73,6 +73,10 @@ QUALITY_RE = re.compile(r"\b(480p|720p|1080p|2160p|4k)\b", re.IGNORECASE)
 EPISODE_RE = re.compile(
     r"(?:episode|epi?sode|\bep\b|قسمت|серия|эпизод)\s*[\-:#]?\s*(\d{1,4})", re.IGNORECASE
 )
+# "S02E01" names both season and episode unambiguously in one go - checked
+# first, since it's far more reliable than the separate patterns below.
+SEASON_EPISODE_RE = re.compile(r"[Ss](\d{1,3})[Ee](\d{1,4})")
+SEASON_RE = re.compile(r"(?:season|сезон|فصل|фасл|мавсим)\s*[:#]?\s*(\d{1,3})", re.IGNORECASE)
 YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
 GENRE_LINE_RE = re.compile(r"(?:genre|жанр|ژانر)\s*[:：]\s*(.+)", re.IGNORECASE)
 STUDIO_LINE_RE = re.compile(r"(?:studio|студия|استودیو)\s*[:：]\s*(.+)", re.IGNORECASE)
@@ -83,6 +87,7 @@ BRACKET_TAG_RE = re.compile(r"[\[\(].*?[\]\)]")
 class ParsedPost:
     title: str = ""
     is_episode: bool = False
+    season_number: int | None = None
     episode_number: int | None = None
     quality: str = "720p"
     year: int | None = None
@@ -101,7 +106,9 @@ def _first_line(text: str) -> str:
 
 def _clean_title(line: str) -> str:
     cleaned = BRACKET_TAG_RE.sub("", line)
+    cleaned = SEASON_EPISODE_RE.sub("", cleaned)
     cleaned = EPISODE_RE.sub("", cleaned)
+    cleaned = SEASON_RE.sub("", cleaned)
     cleaned = QUALITY_RE.sub("", cleaned)
     return re.sub(r"\s{2,}", " ", cleaned).strip(" -–:|")
 
@@ -161,10 +168,19 @@ def parse_post(text: str) -> ParsedPost:
     text = text or ""
     result = ParsedPost()
 
-    episode_match = EPISODE_RE.search(text)
-    if episode_match:
+    season_episode_match = SEASON_EPISODE_RE.search(text)
+    if season_episode_match:
         result.is_episode = True
-        result.episode_number = int(episode_match.group(1))
+        result.season_number = int(season_episode_match.group(1))
+        result.episode_number = int(season_episode_match.group(2))
+    else:
+        episode_match = EPISODE_RE.search(text)
+        if episode_match:
+            result.is_episode = True
+            result.episode_number = int(episode_match.group(1))
+        season_match = SEASON_RE.search(text)
+        if season_match:
+            result.season_number = int(season_match.group(1))
 
     quality_match = QUALITY_RE.search(text)
     if quality_match:
@@ -196,6 +212,8 @@ def parse_post(text: str) -> ParsedPost:
         and not GENRE_LINE_RE.search(line)
         and not STUDIO_LINE_RE.search(line)
         and not EPISODE_RE.search(line)
+        and not SEASON_EPISODE_RE.search(line)
+        and not (SEASON_RE.search(line) and len(line.strip()) < 30)
         and not (QUALITY_RE.search(line) and len(line.strip()) < 30)
         and not re.fullmatch(r"(?:year|год|سال)\s*[:：]?\s*\d{4}", line.strip(), re.IGNORECASE)
     ]

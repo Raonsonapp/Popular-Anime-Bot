@@ -86,10 +86,11 @@ func (h *Handler) ListEpisodes(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid anime id")
 		return
 	}
+	seasonID := queryInt64(r, "season_id", 0)
 	page := queryInt(r, "page", 1)
 	pageSize := queryInt(r, "page_size", 20)
 
-	episodes, total, err := h.Catalog.ListEpisodes(r.Context(), animeID, page, pageSize)
+	episodes, total, err := h.Catalog.ListEpisodes(r.Context(), animeID, seasonID, page, pageSize)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list episodes")
 		return
@@ -97,6 +98,20 @@ func (h *Handler) ListEpisodes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"items": episodes, "total": total, "page": page,
 	})
+}
+
+func (h *Handler) ListSeasons(w http.ResponseWriter, r *http.Request) {
+	animeID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid anime id")
+		return
+	}
+	seasons, err := h.Catalog.ListSeasons(r.Context(), animeID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list seasons")
+		return
+	}
+	writeJSON(w, http.StatusOK, seasons)
 }
 
 func (h *Handler) GetEpisode(w http.ResponseWriter, r *http.Request) {

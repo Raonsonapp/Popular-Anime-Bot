@@ -50,7 +50,8 @@ RANGE_LABEL_RE = re.compile(r"[Ee]?\d{1,4}\s*[-_–]\s*[Ee]?\d{1,4}")
 # The delivered file's own name/caption usually names its exact episode
 # (e.g. "Parasyte S01E03...") even when the *link* that fetched it only
 # pointed at a whole batch.
-SXXEXX_RE = re.compile(r"[Ss]\d{1,3}[Ee](\d{1,4})")
+SXXEXX_RE = re.compile(r"[Ss](\d{1,3})[Ee](\d{1,4})")
+SEASON_WORD_RE = re.compile(r"(?:season|сезон|فصل|фасл|мавсим)\s*[:#]?\s*(\d{1,3})", re.IGNORECASE)
 SPONSOR_CHANNEL_RE = re.compile(r"t\.me/([A-Za-z0-9_]{5,32})/?$", re.IGNORECASE)
 
 
@@ -59,21 +60,25 @@ def _episode_number_from_label(label: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def episode_number_from_delivered(message) -> int | None:
-    """Best-effort episode number read straight off a delivered file - its
-    filename or caption usually spells it out explicitly (e.g. "...
-    S01E03..." or "Episode 3") even when the deep link that fetched it was
-    just a whole-batch link with no specific episode number of its own."""
+def season_and_episode_from_delivered(message) -> tuple[int | None, int | None]:
+    """Best-effort (season_number, episode_number) read straight off a
+    delivered file - its filename or caption usually spells it out
+    explicitly (e.g. "...S01E03..." or "Episode 3") even when the deep
+    link that fetched it was just a whole-batch link with no specific
+    episode number of its own. season_number is None if nothing in the
+    file names one (a single-season/season-less release)."""
     for text in (getattr(message.file, "name", None), message.message):
         if not text:
             continue
         m = SXXEXX_RE.search(text)
         if m:
-            return int(m.group(1))
-        m = EPISODE_LABEL_RE.search(text)
-        if m:
-            return int(m.group(1))
-    return None
+            return int(m.group(1)), int(m.group(2))
+        ep_match = EPISODE_LABEL_RE.search(text)
+        if ep_match:
+            season_match = SEASON_WORD_RE.search(text)
+            season = int(season_match.group(1)) if season_match else None
+            return season, int(ep_match.group(1))
+    return None, None
 
 # Many delivery bots don't send the file right after /start - they show an
 # anime "menu" (Watch / Episodes / etc. as callback buttons, not links)

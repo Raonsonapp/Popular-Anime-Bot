@@ -264,6 +264,14 @@ var catalog = map[string]map[Lang]string{
 		Tajik: "Қисми %d [%s]", Persian: "قسمت %d [%s]",
 		Russian: "Серия %d [%s]", English: "Episode %d [%s]",
 	},
+	"choose_season": {
+		Tajik: "🎬 Ин аниме якчанд фасл дорад — фаслеро интихоб кунед:", Persian: "🎬 این انیمه چند فصل دارد - یک فصل را انتخاب کنید:",
+		Russian: "🎬 У этого аниме несколько сезонов - выберите сезон:", English: "🎬 This anime has multiple seasons - pick one:",
+	},
+	"season_button": {
+		Tajik: "Фасли %d (%d қисм)", Persian: "فصل %d (%d قسمت)",
+		Russian: "Сезон %d (%d серий)", English: "Season %d (%d episodes)",
+	},
 
 	"caption_genre": {
 		Tajik: "🎭 Жанр: %s", Persian: "🎭 ژانر: %s",
