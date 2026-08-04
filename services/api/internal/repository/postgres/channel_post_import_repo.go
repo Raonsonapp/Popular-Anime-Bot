@@ -42,7 +42,7 @@ func (r *ChannelPostRepo) PendingAnimeForPosting(ctx context.Context, targetChan
 		SELECT %s, COALESCE(s.name, '') AS studio_name
 		FROM animes a
 		LEFT JOIN studios s ON s.id = a.studio_id
-		WHERE a.is_published = true AND a.is_deleted = false
+		WHERE a.is_published = true AND a.is_deleted = false AND a.episodes_count > 0
 		AND NOT EXISTS (
 			SELECT 1 FROM channel_posts cp WHERE cp.anime_id = a.id AND cp.target_channel_id = $1
 		)
