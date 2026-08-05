@@ -1,0 +1,20 @@
+name: Keep Render service awake
+
+# Render's free tier suspends the service after 15 minutes with no
+# incoming HTTP request - which also stops everything running inside the
+# same process, including the scheduler's cron jobs (the 8am/8pm
+# showcase posts). Pinging /healthz well under that 15-minute window
+# keeps the service (and the scheduler) actually running at those times,
+# instead of relying on a user happening to message the bot first.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping healthz
+        run: curl -sf https://popular-anime-bot.onrender.com/healthz
