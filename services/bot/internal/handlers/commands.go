@@ -43,6 +43,11 @@ func (b *Bot) handleStart(ctx context.Context, msg *tgbotapi.Message, lang i18n.
 		idStr := strings.TrimPrefix(payload, "anime_")
 		if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
 			b.sendAnimeDetail(ctx, msg.Chat.ID, msg.From.ID, id)
+			// Coming from a channel's "Watch in bot" deep link, the user
+			// already tapped "watch" once to get here - showing the
+			// season/episode picker immediately (same as tapping the
+			// "Watch" button would) skips a redundant second tap.
+			b.sendWatchEntry(ctx, msg.Chat.ID, lang, id)
 			return
 		}
 	}
