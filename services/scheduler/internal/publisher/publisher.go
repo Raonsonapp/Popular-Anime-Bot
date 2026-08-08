@@ -90,25 +90,43 @@ func buildKeyboard(a client.Anime, botUsername string) tgbotapi.InlineKeyboardMa
 }
 
 // Run publishes up to cfg.PostsPerRun not-yet-posted anime to every
-// configured showcase channel - each channel tracks its own "already
-// posted" state (see channel_posts' (anime_id, target_channel_id)
-// uniqueness), so the same anime can go out to more than one channel.
+// configured showcase channel. channel_posts tracks "already posted" per
+// (anime_id, target_channel_id), which only stops the *same* channel from
+// repeating an anime across runs - with several channels, that alone
+// would pick the same top-of-the-queue anime for every one of them in a
+// single run. usedThisRun tracks anime already claimed by an earlier
+// channel in this same call, so multiple channels diversify instead of
+// mirroring each other.
 func Run(ctx context.Context, cfg config.Config, api *tgbotapi.BotAPI, cl *client.Client, logger *slog.Logger) {
 	if len(cfg.TargetChannelIDs) == 0 {
 		logger.Warn("TARGET_CHANNEL_ID not set (or unparseable), skipping publish run")
 		return
 	}
 
+	usedThisRun := map[int64]bool{}
 	for _, targetChannelID := range cfg.TargetChannelIDs {
-		runForChannel(ctx, cfg, targetChannelID, api, cl, logger)
+		runForChannel(ctx, cfg, targetChannelID, api, cl, logger, usedThisRun)
 	}
 }
 
-func runForChannel(ctx context.Context, cfg config.Config, targetChannelID int64, api *tgbotapi.BotAPI, cl *client.Client, logger *slog.Logger) {
-	pending, err := cl.PendingAnime(ctx, targetChannelID, cfg.PostsPerRun)
+func runForChannel(ctx context.Context, cfg config.Config, targetChannelID int64, api *tgbotapi.BotAPI, cl *client.Client, logger *slog.Logger, usedThisRun map[int64]bool) {
+	// Fetch a wider pool than needed - some of it may get skipped below as
+	// already claimed by another channel earlier in this same run.
+	candidates, err := cl.PendingAnime(ctx, targetChannelID, cfg.PostsPerRun*len(cfg.TargetChannelIDs)+cfg.PostsPerRun)
 	if err != nil {
 		logger.Error("fetch pending anime", "target_channel_id", targetChannelID, "error", err)
 		return
+	}
+
+	var pending []client.Anime
+	for _, a := range candidates {
+		if usedThisRun[a.ID] {
+			continue
+		}
+		pending = append(pending, a)
+		if len(pending) == cfg.PostsPerRun {
+			break
+		}
 	}
 	if len(pending) == 0 {
 		logger.Info("no pending anime to publish", "target_channel_id", targetChannelID)
@@ -116,6 +134,7 @@ func runForChannel(ctx context.Context, cfg config.Config, targetChannelID int64
 	}
 
 	for _, a := range pending {
+		usedThisRun[a.ID] = true
 		caption := formatCaption(a)
 		kb := buildKeyboard(a, cfg.BotUsername)
 
