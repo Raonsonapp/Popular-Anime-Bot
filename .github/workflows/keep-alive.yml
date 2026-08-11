@@ -1,15 +1,16 @@
 name: Keep Render service awake
 
-# Render's free tier suspends the service after 15 minutes with no
-# incoming HTTP request - which also stops everything running inside the
-# same process, including the scheduler's cron jobs (the 8am/8pm
-# showcase posts). Pinging /healthz well under that 15-minute window
-# keeps the service (and the scheduler) actually running at those times,
-# instead of relying on a user happening to message the bot first.
+# DISABLED (no schedule trigger) - a 24/7 keep-alive ping burned through
+# Render's free-tier monthly usage allowance in about 3 days and got the
+# service suspended until the next billing period. Free tier fundamentally
+# cannot run continuously without hitting that cap; re-enabling this on a
+# schedule requires either upgrading to a paid Render instance, or a much
+# narrower ping window than "every 10 minutes forever" - see the
+# conversation with the user before turning this back on.
+#
+# workflow_dispatch is kept so it can still be run by hand if needed.
 
 on:
-  schedule:
-    - cron: "*/10 * * * *"
   workflow_dispatch: {}
 
 jobs:
